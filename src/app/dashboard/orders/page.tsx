@@ -278,7 +278,7 @@ function OrdersPageContent() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {filteredMenuItems.map(item => (
                       <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow flex flex-col">
-                        <Image src={item.imageUrl || `https://placehold.co/300x200.png?text=${item.name.replace(/\s/g,'+')}`} alt={item.name} width={300} height={200} className="w-full h-32 object-cover aspect-[3/2]" data-ai-hint={item.dataAiHint || "food item"}/>
+                        <Image src={item.imageUrl || `https://placehold.co/300x200.png?text=${item.name.replace(/\s/g,'+')}`} alt={item.name} width={300} height={200} className="w-full h-32 object-cover aspect-video" data-ai-hint={item.dataAiHint || "food item"}/>
                         <CardContent className="p-3 flex flex-col flex-grow">
                           <h3 className="font-semibold text-md mb-1 font-headline">#{item.number} - {item.name}</h3>
                           <p className="text-xs text-muted-foreground mb-1 flex-grow truncate-2-lines">{item.description}</p>
@@ -293,9 +293,9 @@ function OrdersPageContent() {
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <p className="text-xs text-amber-600 mt-1 mb-1 flex items-center cursor-default">
-                                      <Info className="h-3 w-3 mr-1" /> Additional Allergy Info
-                                    </p>
+                                     <p className="text-xs text-amber-600 mt-1 mb-1 flex items-center cursor-default">
+                                       <Info className="h-3 w-3 mr-1" /> Notes
+                                     </p>
                                   </TooltipTrigger>
                                   <TooltipContent className="max-w-xs">
                                     <p className="text-xs">{item.allergiesNotes}</p>
@@ -318,30 +318,33 @@ function OrdersPageContent() {
                     {filteredMenuItems.map(item => (
                       <Card key={item.id} className="p-3 hover:shadow-md transition-shadow">
                         <div className="flex justify-between items-center">
-                          <div>
-                            <h3 className="font-semibold text-md font-headline">#{item.number} - {item.name}</h3>
-                            <p className="text-xs text-muted-foreground">${item.price.toFixed(2)}</p>
-                             {item.allergyTags && item.allergyTags.length > 0 && (
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {item.allergyTags.map(tag => (
-                                  <Badge key={tag} variant="outline" className="text-xs capitalize border-amber-500 text-amber-600">{tag.replace('-', ' ')}</Badge>
-                                ))}
-                              </div>
-                            )}
-                             {item.allergiesNotes && (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <p className="text-xs text-amber-600 mt-1 flex items-center cursor-default">
-                                      <Info className="h-3 w-3 mr-1" /> Additional Allergy Info
-                                    </p>
-                                  </TooltipTrigger>
-                                  <TooltipContent className="max-w-xs">
-                                    <p className="text-xs">{item.allergiesNotes}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
+                          <div className="flex items-center gap-3">
+                            <Image src={item.imageUrl || `https://placehold.co/100x75.png?text=${item.name.replace(/\s/g,'+')}`} alt={item.name} width={60} height={45} className="rounded object-cover aspect-[4/3]" data-ai-hint={item.dataAiHint || "food item"}/>
+                            <div>
+                              <h3 className="font-semibold text-md font-headline">#{item.number} - {item.name}</h3>
+                              <p className="text-xs text-muted-foreground">${item.price.toFixed(2)}</p>
+                              {item.allergyTags && item.allergyTags.length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {item.allergyTags.map(tag => (
+                                    <Badge key={tag} variant="outline" className="text-xs capitalize border-amber-500 text-amber-600">{tag.replace('-', ' ')}</Badge>
+                                  ))}
+                                </div>
+                              )}
+                              {item.allergiesNotes && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                       <p className="text-xs text-amber-600 mt-1 flex items-center cursor-default">
+                                         <Info className="h-3 w-3 mr-1" /> Notes
+                                       </p>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-xs">
+                                      <p className="text-xs">{item.allergiesNotes}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
                           </div>
                           <Button size="sm" onClick={() => addItemToOrder(item)}>
                             <PlusCircle className="h-4 w-4 mr-2" /> Add

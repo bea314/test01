@@ -5,15 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Save, Building, Bell, CreditCard, Printer, WifiOff, Briefcase, FileText } from "lucide-react";
+import { Save, Building, Bell, CreditCard, Printer, WifiOff, Briefcase, FileText, PlusCircle, Trash2, TestTubeDiagonal } from "lucide-react";
 import { Textarea } from '@/components/ui/textarea';
-import type { BusinessFinancialInfo } from '@/lib/types';
+import type { BusinessFinancialInfo, KitchenPrinter } from '@/lib/types';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function SettingsPage() {
   // Mock settings state
-  const [restaurantName, setRestaurantName] = useState("Tabletop AI Restaurant");
+  const [restaurantName, setRestaurantName] = useState("KREALIRES Restaurant");
   const [defaultTipPercentage, setDefaultTipPercentage] = useState(15);
   const [ivaRate, setIvaRate] = useState(13); // Example for El Salvador
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -21,15 +22,19 @@ export default function SettingsPage() {
   const [offlineModeEnabled, setOfflineModeEnabled] = useState(true);
 
   const [cashierPrinter, setCashierPrinter] = useState("");
-  const [kitchenPrinter, setKitchenPrinter] = useState("192.168.1.100");
+  
+  const [kitchenPrinters, setKitchenPrinters] = useState<KitchenPrinter[]>([]);
+  const [newPrinterName, setNewPrinterName] = useState('');
+  const [newPrinterIp, setNewPrinterIp] = useState('');
+
 
   const [financialInfo, setFinancialInfo] = useState<BusinessFinancialInfo>({
-    businessName: "", // Nombre Comercial
-    legalName: "", // Nombre o Razón Social
+    businessName: "", 
+    legalName: "", 
     nit: "",
     nrc: "",
-    taxpayerType: "", // Tipo de Contribuyente
-    economicActivity: "", // Actividad Económica (Giro)
+    taxpayerType: "", 
+    economicActivity: "", 
     email: "",
     phone: "",
     address: "",
@@ -42,6 +47,26 @@ export default function SettingsPage() {
     setFinancialInfo(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleAddKitchenPrinter = () => {
+    if (newPrinterName.trim() && newPrinterIp.trim()) {
+      setKitchenPrinters(prev => [...prev, { id: Date.now().toString(), name: newPrinterName, ipAddress: newPrinterIp }]);
+      setNewPrinterName('');
+      setNewPrinterIp('');
+      alert(`Mock: Added kitchen printer "${newPrinterName}" at ${newPrinterIp}.`);
+    } else {
+      alert("Please provide both a name and IP address for the kitchen printer.");
+    }
+  };
+
+  const handleRemoveKitchenPrinter = (printerId: string) => {
+    setKitchenPrinters(prev => prev.filter(p => p.id !== printerId));
+    alert(`Mock: Removed kitchen printer.`);
+  };
+
+  const handleTestKitchenPrinter = (printer: KitchenPrinter) => {
+    alert(`Mock: Sending test print to "${printer.name}" at ${printer.ipAddress}.`);
+  };
+
   const handleSaveChanges = () => {
     console.log("Settings saved:", { 
         restaurantName, 
@@ -51,7 +76,7 @@ export default function SettingsPage() {
         autoPrintKitchenOrders, 
         offlineModeEnabled,
         cashierPrinter,
-        kitchenPrinter,
+        kitchenPrinters,
         financialInfo 
     });
     alert("Settings saved successfully! (This is a mock save)");
@@ -166,24 +191,68 @@ export default function SettingsPage() {
         </TabsContent>
         
         <TabsContent value="printers">
+          <Card className="shadow-xl mb-6">
+            <CardHeader>
+              <CardTitle className="font-headline">Cashier Printer</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+                <Label htmlFor="cashierPrinter">Cashier Printer IP/Name</Label>
+                <Input id="cashierPrinter" value={cashierPrinter} onChange={e => setCashierPrinter(e.target.value)} placeholder="e.g., EPSON_TM_U220_Cashier or 192.168.1.101" />
+            </CardContent>
+          </Card>
+
           <Card className="shadow-xl">
             <CardHeader>
-              <CardTitle className="font-headline">Printer Configuration</CardTitle>
-              <CardDescription>Settings for cashier and kitchen printers.</CardDescription>
+              <CardTitle className="font-headline">Kitchen Printers</CardTitle>
+              <CardDescription>Manage printers for different kitchen stations.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-                <div className="space-y-2">
-                    <Label htmlFor="cashierPrinter">Cashier Printer IP/Name</Label>
-                    <Input id="cashierPrinter" value={cashierPrinter} onChange={e => setCashierPrinter(e.target.value)} placeholder="e.g., EPSON_TM_U220_Cashier or 192.168.1.101" />
+                <div className="flex items-end gap-4">
+                    <div className="space-y-2 flex-grow">
+                        <Label htmlFor="newPrinterName">New Printer Name</Label>
+                        <Input id="newPrinterName" value={newPrinterName} onChange={e => setNewPrinterName(e.target.value)} placeholder="e.g., Grill Station Printer" />
+                    </div>
+                    <div className="space-y-2 flex-grow">
+                        <Label htmlFor="newPrinterIp">New Printer IP Address</Label>
+                        <Input id="newPrinterIp" value={newPrinterIp} onChange={e => setNewPrinterIp(e.target.value)} placeholder="e.g., 192.168.1.102" />
+                    </div>
+                    <Button onClick={handleAddKitchenPrinter} variant="outline">
+                        <PlusCircle className="mr-2 h-4 w-4" /> Add Printer
+                    </Button>
                 </div>
-                <div className="space-y-2">
-                    <Label htmlFor="kitchenPrinter">Kitchen Printer IP/Name</Label>
-                    <Input id="kitchenPrinter" value={kitchenPrinter} onChange={e => setKitchenPrinter(e.target.value)} placeholder="e.g., 192.168.1.100 or KITCHEN_PRINTER_MAIN" />
-                </div>
+
+                {kitchenPrinters.length > 0 && (
+                  <ScrollArea className="h-40 border rounded-md p-2">
+                    <div className="space-y-2">
+                      {kitchenPrinters.map(printer => (
+                        <div key={printer.id} className="flex items-center justify-between p-2 border-b last:border-b-0">
+                          <div>
+                            <p className="font-medium">{printer.name}</p>
+                            <p className="text-sm text-muted-foreground">{printer.ipAddress}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button variant="ghost" size="sm" onClick={() => handleTestKitchenPrinter(printer)}>
+                               <TestTubeDiagonal className="mr-1 h-4 w-4"/> Test (Mock)
+                            </Button>
+                            <Button variant="destructive" size="icon" onClick={() => handleRemoveKitchenPrinter(printer.id)}>
+                              <Trash2 className="h-4 w-4" />
+                              <span className="sr-only">Remove {printer.name}</span>
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+                 {kitchenPrinters.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">No kitchen printers added yet.</p>
+                )}
+
+
                 <div className="flex items-center justify-between rounded-lg border p-4">
                     <div className="space-y-0.5">
                         <Label htmlFor="autoPrintKitchen" className="text-base">Auto-print Kitchen Orders</Label>
-                        <p className="text-sm text-muted-foreground">Automatically send new orders or items to the kitchen printer.</p>
+                        <p className="text-sm text-muted-foreground">Automatically send new orders or items to the kitchen printer(s).</p>
                     </div>
                     <Switch id="autoPrintKitchen" checked={autoPrintKitchenOrders} onCheckedChange={setAutoPrintKitchenOrders} />
                 </div>

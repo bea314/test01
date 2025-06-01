@@ -119,3 +119,9 @@ export interface BusinessFinancialInfo {
   municipality?: string;
   department?: string;
 }
+
+export interface KitchenPrinter {
+  id: string;
+  name: string;
+  ipAddress: string;
+}

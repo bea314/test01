@@ -2,7 +2,7 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowRight, LayoutGrid, ShoppingBag, Truck, ListOrdered, Settings, Eye } from "lucide-react";
+import { ArrowRight, LayoutGrid, ShoppingBag, Truck, ListOrdered, Settings, Eye, ClipboardCheck } from "lucide-react";
 import Link from "next/link";
 import { APP_NAME } from "@/lib/constants";
 
@@ -81,9 +81,9 @@ export default function HomePage() {
     },
     {
       title: "Kitchen Display",
-      description: "Access the kitchen order display (Mock).",
-      icon: Eye,
-      href: "#", // This could link to an AlertDialog trigger or a placeholder page
+      description: "Access the kitchen order display.",
+      icon: ClipboardCheck, 
+      href: "/dashboard/kitchen-display", 
     },
     {
       title: "Settings",
