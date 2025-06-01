@@ -8,25 +8,26 @@ import { Utensils, Clock, CheckCircle, Truck, User, AlertCircle } from "lucide-r
 import type { Order, OrderItem } from '@/lib/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { initialStaff } from '@/lib/mock-data'; // Import shared staff data
 
 const mockActiveOrders: Order[] = [
   {
     id: "order001",
     tableId: "T1",
-    waiterId: "W101",
+    waiterId: "staff2", // Using ID from initialStaff (Bob The Builder)
     orderType: "Dine-in",
     items: [
       { id: "oi1", menuItemId: "mi1", name: "Pizza Margherita", quantity: 1, price: 12.99, modifiers: [], status: 'preparing' },
       { id: "oi2", menuItemId: "mi2", name: "Coke", quantity: 2, price: 2.50, modifiers: [], status: 'delivered' },
     ],
-    status: "open", // 'open', 'pending_payment', 'paid', 'completed', 'cancelled'
+    status: "open", 
     subtotal: 17.99, taxAmount: 2.34, tipAmount: 0, discountAmount: 0, totalAmount: 20.33,
-    createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(), // 10 minutes ago
+    createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(), 
     updatedAt: new Date().toISOString(),
   },
   {
     id: "order002",
-    waiterId: "W102",
+    waiterId: "staff4", // Using ID from initialStaff (Diana Prince)
     orderType: "Takeout",
     items: [
       { id: "oi3", menuItemId: "mi3", name: "Sushi Platter", quantity: 1, price: 25.00, modifiers: [], status: 'ready' },
@@ -34,20 +35,20 @@ const mockActiveOrders: Order[] = [
     ],
     status: "pending_payment",
     subtotal: 28.50, taxAmount: 3.71, tipAmount: 0, discountAmount: 0, totalAmount: 32.21,
-    createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(), // 30 minutes ago
+    createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(), 
     updatedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
   },
   {
     id: "order003",
     tableId: "T5",
-    waiterId: "W101",
+    waiterId: "staff2", // Using ID from initialStaff (Bob The Builder)
     orderType: "Dine-in",
     items: [
       { id: "oi5", menuItemId: "mi5", name: "Steak Frites", quantity: 1, price: 28.75, modifiers: [{id: 'mod1', name: 'Medium Rare', priceAdjustment: 0}], status: 'pending' },
     ],
     status: "open",
     subtotal: 28.75, taxAmount: 3.74, tipAmount: 0, discountAmount: 0, totalAmount: 32.49,
-    createdAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(), // 2 minutes ago
+    createdAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(), 
     updatedAt: new Date().toISOString(),
   }
 ];
@@ -99,6 +100,11 @@ export default function ActiveOrdersPage() {
     interval = seconds / 60;
     if (interval > 1) return Math.floor(interval) + " minutes ago";
     return Math.floor(seconds) + " seconds ago";
+  };
+
+  const getWaiterName = (waiterId: string) => {
+    const waiter = initialStaff.find(staff => staff.id === waiterId);
+    return waiter ? waiter.name : waiterId; // Fallback to ID if not found
   };
 
   const filterOrders = (status: Order['status'] | 'all') => {
@@ -161,7 +167,7 @@ export default function ActiveOrdersPage() {
                         </ul>
                       </div>
                        <div className="text-xs">
-                         <User className="inline h-3 w-3 mr-1" /> Waiter: {order.waiterId} {/* Replace with waiter name */}
+                         <User className="inline h-3 w-3 mr-1" /> Waiter: {getWaiterName(order.waiterId)}
                        </div>
                     </CardContent>
                     <CardFooter className="flex justify-between items-center border-t pt-4 mt-auto">

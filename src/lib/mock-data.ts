@@ -1,5 +1,5 @@
 
-import type { MenuItem, MenuItemCategory } from '@/lib/types';
+import type { MenuItem, MenuItemCategory, User, UserRole } from '@/lib/types';
 
 export const mockCategories: MenuItemCategory[] = [
   { id: "cat1", name: "Appetizers" },
@@ -85,4 +85,13 @@ export const initialMenuItems: MenuItem[] = [
     availability: 'available',
     imageUrl: 'https://placehold.co/150x100.png?text=Iced+Tea'
   }
+];
+
+export const userRoles: UserRole[] = ['admin', 'cashier', 'waiter'];
+
+export const initialStaff: User[] = [
+  { id: "staff1", name: "Alice Wonderland", email: "alice@tabletop.ai", role: "admin" },
+  { id: "staff2", name: "Bob The Builder", email: "bob@tabletop.ai", role: "waiter" },
+  { id: "staff3", name: "Charlie Chaplin", email: "charlie@tabletop.ai", role: "cashier" },
+  { id: "staff4", name: "Diana Prince", email: "diana@tabletop.ai", role: "waiter" },
 ];

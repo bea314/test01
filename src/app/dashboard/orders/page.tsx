@@ -13,7 +13,7 @@ import { Separator } from '@/components/ui/separator';
 import type { OrderItem, MenuItem as MenuItemType, OrderType, Waiter, Order } from '@/lib/types';
 import { IVA_RATE } from '@/lib/constants';
 import Image from 'next/image';
-import { initialMenuItems as mockMenuItemsAll, mockCategories as mockMenuCategories } from '@/lib/mock-data';
+import { initialMenuItems as mockMenuItemsAll, mockCategories as mockMenuCategories, initialStaff } from '@/lib/mock-data';
 import {
   Dialog,
   DialogContent,
@@ -32,11 +32,6 @@ import {
 } from "@/components/ui/tooltip";
 
 
-const mockWaiters: Waiter[] = [
-  { id: 'waiter1', name: 'John Doe' },
-  { id: 'waiter2', name: 'Jane Smith' },
-];
-
 type MenuView = 'grid' | 'list';
 
 export default function OrdersPage() {
@@ -46,7 +41,7 @@ export default function OrdersPage() {
   const [menuView, setMenuView] = useState<MenuView>('grid');
   
   const [orderType, setOrderType] = useState<OrderType>('Dine-in');
-  const [selectedWaiter, setSelectedWaiter] = useState<string | undefined>(mockWaiters[0]?.id);
+  const [selectedWaiter, setSelectedWaiter] = useState<string | undefined>(initialStaff[0]?.id); // Default to first staff member
   const [tipPercentage, setTipPercentage] = useState<number>(15);
   const [manualTip, setManualTip] = useState<number>(0);
   const [discountPercentage, setDiscountPercentage] = useState<number>(0);
@@ -135,7 +130,7 @@ export default function OrdersPage() {
                         <SelectValue placeholder="Assign Waiter" />
                     </SelectTrigger>
                     <SelectContent>
-                        {mockWaiters.map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+                        {initialStaff.map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
                     </SelectContent>
                 </Select>
             </div>

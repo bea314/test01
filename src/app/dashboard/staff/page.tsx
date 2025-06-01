@@ -7,19 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PlusCircle, Edit3, Trash2, UserPlus, Users } from "lucide-react";
-import type { User, UserRole } from '@/lib/types'; // Assuming User and UserRole types exist
+import type { User, UserRole } from '@/lib/types'; 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-
-const initialStaff: User[] = [
-  { id: "staff1", name: "Alice Wonderland", email: "alice@tabletop.ai", role: "admin" },
-  { id: "staff2", name: "Bob The Builder", email: "bob@tabletop.ai", role: "waiter" },
-  { id: "staff3", name: "Charlie Chaplin", email: "charlie@tabletop.ai", role: "cashier" },
-];
-
-const userRoles: UserRole[] = ['admin', 'cashier', 'waiter'];
+import { initialStaff as staffData, userRoles } from '@/lib/mock-data'; // Import from mock-data
 
 export default function StaffPage() {
-  const [staffList, setStaffList] = useState<User[]>(initialStaff);
+  const [staffList, setStaffList] = useState<User[]>(staffData);
   const [isEditing, setIsEditing] = useState<User | null>(null);
 
   // Form state
@@ -37,7 +30,10 @@ export default function StaffPage() {
   };
 
   const handleDelete = (staffId: string) => {
+    // Mock delete: This only updates local state and won't persist.
+    // In a real app, this would be an API call.
     setStaffList(prevStaff => prevStaff.filter(s => s.id !== staffId));
+    alert(`Mock delete for staff ID: ${staffId}. This change is temporary and won't affect other pages using the shared mock data unless the page is reloaded or they re-fetch.`);
   };
 
   const resetForm = () => {
@@ -54,7 +50,7 @@ export default function StaffPage() {
         alert("Please fill in all required fields.");
         return;
     }
-    const newStaffMember: User = {
+    const newStaffMemberData: User = {
       id: isEditing ? isEditing.id : Date.now().toString(),
       name: staffName,
       email: staffEmail,
@@ -63,10 +59,14 @@ export default function StaffPage() {
     };
 
     if (isEditing) {
-      setStaffList(prevStaff => prevStaff.map(s => s.id === newStaffMember.id ? newStaffMember : s));
+      setStaffList(prevStaff => prevStaff.map(s => s.id === newStaffMemberData.id ? newStaffMemberData : s));
     } else {
-      setStaffList(prevStaff => [newStaffMember, ...prevStaff]);
+      setStaffList(prevStaff => [newStaffMemberData, ...prevStaff]);
     }
+    // Note: This only updates local state. To make changes visible on other pages that use initialStaff
+    // from mock-data.ts without a reload, a more robust state management (like Context/Redux/Zustand)
+    // or a backend API would be needed. For this prototype, we acknowledge this limitation.
+    alert(`Staff member ${isEditing ? 'updated' : 'added'} (mock). Changes are local to this page's state.`);
     resetForm();
   };
   
@@ -122,7 +122,7 @@ export default function StaffPage() {
         <Card className="lg:col-span-2 shadow-xl">
           <CardHeader>
             <CardTitle className="font-headline flex items-center"><Users className="mr-2 h-6 w-6" />Current Staff</CardTitle>
-            <CardDescription>Manage existing staff members and their roles.</CardDescription>
+            <CardDescription>Manage existing staff members and their roles. (Displaying from shared mock data)</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
