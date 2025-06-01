@@ -59,14 +59,14 @@ export interface ProcessedPaymentSplit {
 }
 
 export interface OrderTotals {
-  subtotal: number;
+  subtotal: number; // Subtotal *after* item-level courtesies
   taxAmount: number;
   tipAmount: number;
-  discountAmount: number;
-  manualDiscountAmount?: number;
-  totalAmount: number;
-  appliedPresetDiscountValue: number;
-  appliedManualDiscountValue: number;
+  discountAmount: number; // Total value of all discounts applied
+  totalAmount: number; // Grand total after all calculations
+  appliedPresetDiscountValue: number; // Value of the preset discount applied
+  appliedManualDiscountValue: number; // Value of the manual discount applied
+  // manualDiscountAmount?: number; // This was confusing, using appliedManualDiscountValue instead
 }
 
 
@@ -86,8 +86,15 @@ export interface Order extends OrderTotals {
   isCourtesy?: boolean; // For overall order courtesy
   isOnHold?: boolean;
   disableReceiptPrint?: boolean;
-  selectedDiscountId?: string;
+  
+  // These represent the discounts *selected* or *entered* by the user, not necessarily applied yet
+  selectedDiscountId?: string; 
   appliedCouponCode?: string;
+  manualDiscountAmount?: number; // The raw manual discount amount entered by user
+
+  // These represent the discounts that have been confirmed and *applied* to the current calculation
+  appliedPresetDiscount?: DiscountPreset | null; // Store the actual preset object
+  
   paymentSplitType?: PaymentSplitType;
   paymentSplitWays?: number; // For 'equal' split
   processedSplits?: ProcessedPaymentSplit[];
@@ -168,4 +175,3 @@ export interface DiscountPreset {
 
 // Tip mode for checkout
 export type TipMode = 'default' | 'percentage' | 'manual';
-
