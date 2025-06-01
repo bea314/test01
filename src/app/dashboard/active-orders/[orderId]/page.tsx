@@ -10,9 +10,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, User, Tag, Hash, Clock, Calendar, CreditCard, Percent, DollarSign, Receipt, Info, Utensils, Loader2, AlertTriangle, Users, CheckCircle, Edit3, Save, ShoppingBag, CircleDollarSign, WalletCards, EyeOff, PlusCircle, ArrowRight, Trash2, XCircle, Settings } from "lucide-react";
+import { ArrowLeft, User, Tag, Hash, Clock, Settings, DollarSign, Receipt, Info, Utensils, Loader2, AlertTriangle, Users, CheckCircle, Edit3, Save, ShoppingBag, CircleDollarSign, WalletCards, EyeOff, PlusCircle, ArrowRight, Trash2, XCircle } from "lucide-react";
 import type { Order, OrderItem, RestaurantTable } from '@/lib/types';
 import { mockActiveOrders, initialStaff, initialTables, updateActiveOrder, calculateOrderTotals, initialMenuItems } from '@/lib/mock-data';
 import { IVA_RATE } from '@/lib/constants';
@@ -41,7 +41,6 @@ export default function OrderDetailsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isEditingTableGuest, setIsEditingTableGuest] = useState(false);
 
-  // Editable fields for table/guest
   const [editableTableId, setEditableTableId] = useState<string | undefined>(undefined);
   const [editableNumberOfGuests, setEditableNumberOfGuests] = useState<number | undefined>(undefined);
 
@@ -49,15 +48,17 @@ export default function OrderDetailsPage() {
     if (orderId) {
       const foundOrder = mockActiveOrders.find(o => o.id === orderId);
       if (foundOrder) {
-        setOrder(JSON.parse(JSON.stringify(foundOrder))); // Deep copy for local editing
+        setOrder(JSON.parse(JSON.stringify(foundOrder))); 
         setEditableTableId(foundOrder.tableId);
         setEditableNumberOfGuests(foundOrder.numberOfGuests);
       } else {
         setOrder(null);
+        toast({ title: "Error", description: "Order not found.", variant: "destructive" });
+        router.push('/dashboard/active-orders');
       }
       setIsLoading(false);
     }
-  }, [orderId]);
+  }, [orderId, router, toast]);
 
   useEffect(() => {
     loadOrderData();
@@ -78,7 +79,6 @@ export default function OrderDetailsPage() {
 
   const handleSaveTableGuestChanges = () => {
     if (!order) return;
-
     const originalTableId = mockActiveOrders.find(o => o.id === order.id)?.tableId;
 
     const updatedOrderPartial: Partial<Order> & { id: string } = {
@@ -90,14 +90,13 @@ export default function OrderDetailsPage() {
     
     const updatedOrderResult = updateActiveOrder(updatedOrderPartial);
     if (updatedOrderResult) {
-      setOrder(updatedOrderResult); // Update local state with the full updated order
+      setOrder(updatedOrderResult);
     }
 
-    // Update table status if table changed
     if (originalTableId !== editableTableId) {
         if (originalTableId) {
             const oldTableIndex = initialTables.findIndex(t => t.id === originalTableId);
-            if (oldTableIndex > -1) {
+            if (oldTableIndex > -1 && initialTables[oldTableIndex].currentOrderId === order.id) {
                 initialTables[oldTableIndex].status = 'available';
                 initialTables[oldTableIndex].currentOrderId = undefined;
             }
@@ -128,7 +127,7 @@ export default function OrderDetailsPage() {
     );
     const updatedOrderResult = updateActiveOrder({ id: order.id, items: updatedItems });
     if (updatedOrderResult) {
-      setOrder(updatedOrderResult);
+      setOrder(updatedOrderResult); // This will trigger re-calculation via calculateOrderTotals
       toast({ title: "Item Cancelled", description: "Item status updated and totals recalculated." });
     }
   };
@@ -138,11 +137,7 @@ export default function OrderDetailsPage() {
     const updatedOrderPartial: Partial<Order> & { id: string } = { id: order.id, [action]: value };
     
     if (action === 'isCourtesy' && value) {
-        updatedOrderPartial.discountAmount = order.subtotal; // Full discount
-        updatedOrderPartial.tipAmount = 0;
-        // Totals will be recalculated by updateActiveOrder
-    } else if (action === 'isCourtesy' && !value) {
-        // Revert courtesy, totals will be recalculated
+        updatedOrderPartial.tipAmount = 0; // Courtesy orders typically don't have tips
     }
 
     if (action === 'isOnHold') {
@@ -151,8 +146,8 @@ export default function OrderDetailsPage() {
     
     const updatedOrderResult = updateActiveOrder(updatedOrderPartial);
      if (updatedOrderResult) {
-      setOrder(updatedOrderResult);
-      toast({ title: "Order Updated", description: `Order action changed.` });
+      setOrder(updatedOrderResult); // Recalculates totals including discount for courtesy
+      toast({ title: "Order Updated", description: `Order action '${action}' changed.` });
     }
   };
 
@@ -179,7 +174,9 @@ export default function OrderDetailsPage() {
   }
   
   const canModifyTableGuest = order.status === 'open' || order.status === 'on_hold' || order.status === 'pending_payment';
-  const canModifyItems = order.status === 'open' || order.status === 'on_hold';
+  const canCancelItems = order.status === 'open' || order.status === 'on_hold' || order.status === 'pending_payment';
+  const canModifyOrderActions = order.status !== 'paid' && order.status !== 'completed' && order.status !== 'cancelled';
+
 
   return (
     <div className="container mx-auto py-8">
@@ -245,7 +242,7 @@ export default function OrderDetailsPage() {
                             <SelectValue placeholder="Select Table" />
                         </SelectTrigger>
                         <SelectContent>
-                            {initialTables.filter(t => t.status === 'available' || t.id === order.tableId).map(table => ( // Allow selecting current table even if occupied by this order
+                            {initialTables.filter(t => t.status === 'available' || t.id === order.tableId || t.id === editableTableId).map(table => ( 
                                 <SelectItem key={table.id} value={table.id}>{table.name}</SelectItem>
                             ))}
                         </SelectContent>
@@ -278,7 +275,7 @@ export default function OrderDetailsPage() {
             <div>
                 <div className="flex justify-between items-center mb-3">
                     <h4 className="font-semibold text-lg flex items-center"><Utensils className="mr-2 h-5 w-5 text-primary"/>Items Ordered</h4>
-                    {canModifyItems && (
+                    {canCancelItems && (
                         <Button variant="outline" size="sm" asChild>
                             <Link href={`/dashboard/orders?editActiveOrderId=${order.id}`}>
                                 <PlusCircle className="mr-2 h-4 w-4"/> Add More Items
@@ -297,7 +294,7 @@ export default function OrderDetailsPage() {
                         </div>
                         <div className="flex items-center gap-2">
                             <p className={`font-semibold text-primary ${item.status === 'cancelled' ? 'line-through' : ''}`}>${(item.quantity * item.price).toFixed(2)}</p>
-                            {item.status !== 'cancelled' && canModifyItems && (
+                            {item.status !== 'cancelled' && canCancelItems && (
                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={() => handleCancelItem(item.id)} title="Cancel Item">
                                     <XCircle className="h-4 w-4" />
                                 </Button>
@@ -326,11 +323,11 @@ export default function OrderDetailsPage() {
                 <h4 className="font-semibold text-lg mb-2 flex items-center"><Settings className="mr-2 h-5 w-5 text-primary"/>Order Actions</h4>
                 <div className="flex flex-wrap gap-x-6 gap-y-3 items-center">
                     <div className="flex items-center space-x-2">
-                        <Checkbox id="isCourtesy" checked={order.isCourtesy} onCheckedChange={(checked) => handleOrderActionChange('isCourtesy', !!checked)} disabled={order.status === 'paid' || order.status === 'completed' || order.status === 'cancelled'} />
+                        <Checkbox id="isCourtesy" checked={order.isCourtesy} onCheckedChange={(checked) => handleOrderActionChange('isCourtesy', !!checked)} disabled={!canModifyOrderActions} />
                         <Label htmlFor="isCourtesy" className="flex items-center"><CircleDollarSign className="mr-1 h-4 w-4 text-green-500"/>Mark as Courtesy</Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                        <Checkbox id="isOnHold" checked={order.isOnHold} onCheckedChange={(checked) => handleOrderActionChange('isOnHold', !!checked)} disabled={order.status === 'paid' || order.status === 'completed' || order.status === 'cancelled'} />
+                        <Checkbox id="isOnHold" checked={order.isOnHold} onCheckedChange={(checked) => handleOrderActionChange('isOnHold', !!checked)} disabled={!canModifyOrderActions} />
                         <Label htmlFor="isOnHold" className="flex items-center"><WalletCards className="mr-1 h-4 w-4 text-yellow-500"/>Hold Bill</Label>
                     </div>
                       <div className="flex items-center space-x-2">
@@ -353,4 +350,3 @@ export default function OrderDetailsPage() {
     </div>
   );
 }
-

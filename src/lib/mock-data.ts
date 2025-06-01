@@ -176,85 +176,115 @@ export let initialTables: RestaurantTable[] = [
 ];
 
 export const calculateOrderTotals = (order: Order): Order => {
+  // Consider only non-cancelled items for subtotal
   const activeItems = order.items.filter(item => item.status !== 'cancelled');
-  const subtotal = activeItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  
+  // Calculate subtotal, considering item-specific courtesy
+  const subtotal = activeItems.reduce((sum, item) => {
+    return sum + (item.isCourtesy ? 0 : item.price * item.quantity);
+  }, 0);
 
   let discountAmount = 0;
-  if (order.isCourtesy) {
+  if (order.isCourtesy) { // Overall order courtesy
     discountAmount = subtotal;
   } else if (order.selectedDiscountId) {
     const discountPreset = mockPresetDiscounts.find(d => d.id === order.selectedDiscountId);
     if (discountPreset) {
-      let discountableSubtotal = subtotal;
-      // Apply item/category specific discount logic
+      let discountableSubtotal = 0;
       if (discountPreset.applicableItemIds && discountPreset.applicableItemIds.length > 0) {
         discountableSubtotal = activeItems
-          .filter(item => discountPreset.applicableItemIds!.includes(item.menuItemId))
+          .filter(item => !item.isCourtesy && discountPreset.applicableItemIds!.includes(item.menuItemId))
           .reduce((sum, item) => sum + item.price * item.quantity, 0);
       } else if (discountPreset.applicableCategoryIds && discountPreset.applicableCategoryIds.length > 0) {
          const itemCategories = activeItems.map(item => initialMenuItems.find(mi => mi.id === item.menuItemId)?.category.id);
          discountableSubtotal = activeItems
-           .filter((item, index) => discountPreset.applicableCategoryIds!.includes(itemCategories[index] || ''))
+           .filter((item, index) => !item.isCourtesy && discountPreset.applicableCategoryIds!.includes(itemCategories[index] || ''))
            .reduce((sum, item) => sum + item.price * item.quantity, 0);
+      } else {
+        // Discount applies to all non-courtesy items if no specific applicability
+        discountableSubtotal = activeItems
+          .filter(item => !item.isCourtesy)
+          .reduce((sum, item) => sum + item.price * item.quantity, 0);
       }
       discountAmount = discountableSubtotal * (discountPreset.percentage / 100);
     }
   }
   
-  const subtotalAfterDiscount = subtotal - discountAmount;
-  const taxAmount = order.isCourtesy ? 0 : subtotalAfterDiscount * IVA_RATE;
-  const tipAmount = order.isCourtesy ? 0 : order.tipAmount; // Tip is usually set manually or based on subtotalAfterDiscount
+  // Apply manual dollar discount after percentage discount, if any
+  let subtotalAfterPercentageDiscount = subtotal - discountAmount;
+  if (order.manualDiscountAmount && order.manualDiscountAmount > 0 && !order.isCourtesy) {
+    // Ensure manual discount doesn't make subtotal negative
+    const actualManualDiscount = Math.min(subtotalAfterPercentageDiscount, order.manualDiscountAmount);
+    discountAmount += actualManualDiscount; // Add to total discount shown
+    // Subtotal for tax calculation is further reduced
+    subtotalAfterPercentageDiscount -= actualManualDiscount;
+  }
+
+
+  const subtotalAfterAllDiscounts = subtotal - discountAmount; // This is the base for tax & tip
   
-  const totalAmount = subtotalAfterDiscount + taxAmount + tipAmount;
+  const taxAmount = order.isCourtesy ? 0 : subtotalAfterAllDiscounts * IVA_RATE;
+  const tipAmount = order.isCourtesy ? 0 : order.tipAmount || 0;
+  
+  const totalAmount = subtotalAfterAllDiscounts + taxAmount + tipAmount;
 
   return {
     ...order,
-    subtotal,
-    discountAmount,
+    subtotal, // Original subtotal before any discounts
+    discountAmount, // Total combined discount (preset + manual if applicable)
     taxAmount,
-    // tipAmount is handled separately in checkout, or could be recalculated if needed
+    tipAmount,
     totalAmount,
   };
 };
 
 
-// Function to add an order to the mockActiveOrders array
-export const addActiveOrder = (newOrderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'subtotal' | 'taxAmount' | 'totalAmount' | 'discountAmount'> & { items: Omit<OrderItem, 'id'>[] }) => {
+export const addActiveOrder = (newOrderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'subtotal' | 'taxAmount' | 'totalAmount' | 'discountAmount' | 'items' | 'status'> & { items: (Omit<OrderItem, 'id' | 'status'> & { tempId?: string })[] }) => {
   const newOrderId = `order${Date.now()}`;
   let newOrder: Order = {
-    ...newOrderData,
     id: newOrderId,
-    items: newOrderData.items.map(item => ({
-        ...item, 
-        id: `oi-${newOrderId}-${item.menuItemId}-${Math.random().toString(36).substring(2, 9)}`
+    tableId: newOrderData.tableId,
+    waiterId: newOrderData.waiterId,
+    orderType: newOrderData.orderType,
+    numberOfGuests: newOrderData.numberOfGuests,
+    items: newOrderData.items.map((item, index) => ({
+        ...item,
+        id: `oi-${newOrderId}-${item.menuItemId}-${index}-${Math.random().toString(36).substring(2, 7)}`,
+        status: 'pending'
     })),
     status: newOrderData.isOnHold ? 'on_hold' : 'open',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    subtotal: 0, // Will be calculated
-    taxAmount: 0, // Will be calculated
-    tipAmount: newOrderData.tipAmount || 0, // Initialize tip amount
-    discountAmount: 0, // Will be calculated
-    totalAmount: 0, // Will be calculated
+    subtotal: 0,
+    taxAmount: 0,
+    tipAmount: newOrderData.tipAmount || 0,
+    discountAmount: 0,
+    manualDiscountAmount: newOrderData.manualDiscountAmount || 0,
+    totalAmount: 0,
+    isCourtesy: newOrderData.isCourtesy || false,
+    isOnHold: newOrderData.isOnHold || false,
+    disableReceiptPrint: newOrderData.disableReceiptPrint || false,
+    selectedDiscountId: newOrderData.selectedDiscountId,
+    appliedCouponCode: newOrderData.appliedCouponCode,
+    paymentSplitType: newOrderData.paymentSplitType || 'none',
+    paymentSplitWays: newOrderData.paymentSplitWays,
+    processedSplits: [],
   };
   newOrder = calculateOrderTotals(newOrder);
-  mockActiveOrders.unshift(newOrder); 
+  mockActiveOrders.unshift(newOrder);
   return newOrder;
 };
 
-
-// Function to update an existing order
 export const updateActiveOrder = (updatedOrderData: Partial<Order> & { id: string }) => {
   const index = mockActiveOrders.findIndex(o => o.id === updatedOrderData.id);
   if (index !== -1) {
     let orderToUpdate = { ...mockActiveOrders[index], ...updatedOrderData, updatedAt: new Date().toISOString() };
-    orderToUpdate = calculateOrderTotals(orderToUpdate);
+    orderToUpdate = calculateOrderTotals(orderToUpdate); // Recalculate totals
     mockActiveOrders[index] = orderToUpdate;
     return orderToUpdate;
-  } else {
-    console.warn(`Order with ID ${updatedOrderData.id} not found for update.`);
-    return undefined;
   }
+  console.warn(`Order with ID ${updatedOrderData.id} not found for update.`);
+  return undefined;
 };
 
 export let mockActiveOrders: Order[] = [
@@ -270,13 +300,14 @@ export let mockActiveOrders: Order[] = [
       { id: "oi2b", menuItemId: "item7", name: "Iced Tea", quantity: 1, price: 3.50, modifiers: [], status: 'delivered', assignedGuest: "Guest 3" },
     ],
     status: "open",
-    subtotal: (18.00 * 1) + (3.50 * 3), taxAmount: ((18.00 * 1) + (3.50 * 3)) * 0.13, tipAmount: 0, discountAmount: 0,
+    subtotal: (18.00 * 1) + (3.50 * 3), taxAmount: ((18.00 * 1) + (3.50 * 3)) * 0.13, tipAmount: 0, discountAmount: 0, manualDiscountAmount: 0,
     totalAmount: ((18.00 * 1) + (3.50 * 3)) * 1.13,
     createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
     updatedAt: new Date().toISOString(),
     isOnHold: false,
     isCourtesy: false,
     disableReceiptPrint: false,
+    processedSplits: [],
   },
   {
     id: "order002",
@@ -287,10 +318,11 @@ export let mockActiveOrders: Order[] = [
       { id: "oi4", menuItemId: "item9", name: "Tomato Soup", quantity: 1, price: 7.50, modifiers: [], status: 'ready', observations: "No garlic bread" },
     ],
     status: "pending_payment",
-    subtotal: 22.50 + 7.50, taxAmount: (22.50 + 7.50) * 0.13, tipAmount: 0, discountAmount: 0,
+    subtotal: 22.50 + 7.50, taxAmount: (22.50 + 7.50) * 0.13, tipAmount: 0, discountAmount: 0, manualDiscountAmount: 0,
     totalAmount: (22.50 + 7.50) * 1.13,
     createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    processedSplits: [],
   },
   {
     id: "order003",
@@ -302,10 +334,11 @@ export let mockActiveOrders: Order[] = [
       { id: "oi5", menuItemId: "item1", name: "Bruschetta", quantity: 1, price: 9.50, modifiers: [], status: 'pending' },
     ],
     status: "open",
-    subtotal: 9.50, taxAmount: 9.50 * 0.13, tipAmount: 0, discountAmount: 0,
+    subtotal: 9.50, taxAmount: 9.50 * 0.13, tipAmount: 0, discountAmount: 0, manualDiscountAmount: 0,
     totalAmount: 9.50 * 1.13,
     createdAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
     updatedAt: new Date().toISOString(),
+    processedSplits: [],
   },
   {
     id: "order004",
@@ -316,12 +349,13 @@ export let mockActiveOrders: Order[] = [
       { id: "oi7", menuItemId: "item6", name: "Chocolate Lava Cake", quantity: 1, price: 9.75, modifiers: [], status: 'pending', observations: "Add extra chocolate sauce if possible" },
     ],
     status: "open",
-    subtotal: (8.99*2) + 9.75, taxAmount: ((8.99*2) + 9.75) * 0.13, tipAmount: 0, discountAmount: 0,
+    subtotal: (8.99*2) + 9.75, taxAmount: ((8.99*2) + 9.75) * 0.13, tipAmount: 0, discountAmount: 0, manualDiscountAmount: 0,
     totalAmount: ((8.99*2) + 9.75) * 1.13,
     createdAt: new Date(Date.now() - 16 * 60 * 1000).toISOString(), // Older order for KDS priority
     updatedAt: new Date().toISOString(),
+    processedSplits: [],
   },
-  { // Example occupied table order for t2
+  { 
     id: "orderXYZ",
     tableId: "t2",
     waiterId: "staff2",
@@ -332,16 +366,17 @@ export let mockActiveOrders: Order[] = [
       { id: "oi9", menuItemId: "item7", name: "Iced Tea", quantity: 1, price: 3.50, modifiers: [], status: 'delivered', assignedGuest: "Guest 2"},
     ],
     status: "open",
-    subtotal: 12.00 + 3.50, taxAmount: (12.00 + 3.50) * 0.13, tipAmount: 3.00, discountAmount: 0,
+    subtotal: 12.00 + 3.50, taxAmount: (12.00 + 3.50) * 0.13, tipAmount: 3.00, discountAmount: 0, manualDiscountAmount: 0,
     totalAmount: (12.00 + 3.50) * 1.13 + 3.00,
     createdAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
     updatedAt: new Date().toISOString(),
+    processedSplits: [],
   }
 ];
 
-export const mockPresetDiscounts: DiscountPreset[] = [
-    { id: 'discount1', name: 'Employee Discount', percentage: 15, description: 'For all KREALIRES staff.' },
-    { id: 'discount2', name: 'Happy Hour Special', percentage: 10, description: 'Valid on select items during happy hour.', applicableCategoryIds: ["cat1", "cat4"] },
+export let mockPresetDiscounts: DiscountPreset[] = [
+    { id: 'discount1', name: 'Employee Discount', percentage: 15, description: 'For all KREALIRES staff.', couponCode: 'STAFF15' },
+    { id: 'discount2', name: 'Happy Hour Special', percentage: 10, description: 'Valid on select items during happy hour.', applicableCategoryIds: ["cat1", "cat4"], couponCode: 'HAPPYHOUR' },
     { id: 'discount3', name: 'VIP Customer', percentage: 5, description: 'For registered VIP customers.' },
     { id: 'discount4', name: 'Salmon Special', percentage: 20, description: 'Discount on Grilled Salmon only.', applicableItemIds: ["item5"] },
 ];

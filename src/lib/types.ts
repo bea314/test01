@@ -35,7 +35,8 @@ export interface OrderItem {
   specialInstructions?: string;
   observations?: string;
   status: 'pending' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
-  assignedGuest?: string; 
+  assignedGuest?: string;
+  isCourtesy?: boolean; // For item-specific courtesy
 }
 
 export interface DTEInvoiceInfo {
@@ -46,6 +47,14 @@ export interface DTEInvoiceInfo {
 }
 
 export type PaymentSplitType = 'none' | 'equal' | 'by_item' | 'by_customer_bill';
+
+export interface ProcessedPaymentSplit {
+  id: string; // temp id for the split
+  amountPaid: number;
+  paymentMethod: string;
+  itemsCovered?: string[]; // item IDs if split by item
+  shareNumber?: number; // if split equally
+}
 
 export interface Order {
   id: string;
@@ -59,18 +68,21 @@ export interface Order {
   taxAmount: number;
   tipAmount: number;
   discountAmount: number;
+  manualDiscountAmount?: number; // For manual dollar discount
   totalAmount: number;
   paymentMethod?: 'cash' | 'credit_card' | 'digital_wallet';
   dteInvoiceInfo?: DTEInvoiceInfo;
   dteType?: 'consumidor_final' | 'credito_fiscal';
   createdAt: string;
   updatedAt: string;
-  isCourtesy?: boolean;
-  isOnHold?: boolean; 
+  isCourtesy?: boolean; // For overall order courtesy
+  isOnHold?: boolean;
   disableReceiptPrint?: boolean;
   selectedDiscountId?: string;
+  appliedCouponCode?: string;
   paymentSplitType?: PaymentSplitType;
   paymentSplitWays?: number; // For 'equal' split
+  processedSplits?: ProcessedPaymentSplit[];
 }
 
 
@@ -140,8 +152,9 @@ export interface DiscountPreset {
   id: string;
   name: string;
   percentage: number; // e.g., 15 for 15%
+  couponCode?: string;
   description?: string;
-  applicableItemIds?: string[]; // New: For item-specific discounts
-  applicableCategoryIds?: string[]; // New: For category-specific discounts
+  applicableItemIds?: string[];
+  applicableCategoryIds?: string[];
 }
 
