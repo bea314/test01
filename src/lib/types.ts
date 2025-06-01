@@ -32,7 +32,8 @@ export interface OrderItem {
   quantity: number;
   price: number;
   modifiers: OrderItemModifier[];
-  specialInstructions?: string;
+  specialInstructions?: string; // Kept for general instructions
+  observations?: string; // For specific item observations/notes
   status: 'pending' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
 }
 
@@ -50,6 +51,7 @@ export interface Order {
   totalAmount: number;
   paymentMethod?: 'cash' | 'credit_card' | 'digital_wallet';
   dteInvoiceInfo?: DTEInvoiceInfo; // For El Salvador DTE
+  dteType?: 'consumidor_final' | 'credito_fiscal';
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
 }
@@ -75,9 +77,25 @@ export interface MenuItem {
   imageUrl?: string;
   availability: 'available' | 'unavailable';
   number?: string; // For searching by number
+  allergiesNotes?: string; // For allergy information
 }
 
 export interface Waiter {
   id: string;
   name: string;
+}
+
+// For settings page - financial documents
+export interface BusinessFinancialInfo {
+  businessName: string; // Nombre Comercial
+  legalName: string; // Nombre o Razón Social
+  nit: string; // NIT
+  nrc: string; // NRC
+  taxpayerType: string; // Tipo de Contribuyente (e.g., Persona Natural, Sociedad)
+  economicActivity: string; // Actividad Económica (Giro)
+  email: string;
+  phone: string;
+  address?: string; // Might be useful
+  municipality?: string;
+  department?: string;
 }
