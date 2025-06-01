@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, User, Tag, Hash, Clock, Calendar, CreditCard, Percent, DollarSign, Receipt, Info, Utensils, Loader2, AlertTriangle, Users, CheckCircle, Edit3, Save, ShoppingBag, CircleDollarSign, WalletCards, EyeOff } from "lucide-react";
+import { ArrowLeft, User, Tag, Hash, Clock, Calendar, CreditCard, Percent, DollarSign, Receipt, Info, Utensils, Loader2, AlertTriangle, Users, CheckCircle, Edit3, Save, ShoppingBag, CircleDollarSign, WalletCards, EyeOff, PlusCircle, ArrowRight } from "lucide-react";
 import type { Order, OrderItem, RestaurantTable } from '@/lib/types';
 import { mockActiveOrders, initialStaff, initialTables, updateActiveOrder } from '@/lib/mock-data';
 import { IVA_RATE } from '@/lib/constants';
