@@ -115,7 +115,7 @@ export default function HomePage() {
 
       <section>
         <h2 className="text-2xl font-headline font-semibold text-foreground mb-6 text-center">Other Quick Actions</h2>
-        <ul className="space-y-3 max-w-xl mx-auto">
+        <ul className="space-y-6 max-w-xl mx-auto">
           {secondaryActions.map((action) => (
             <SecondaryActionListItem key={action.title} {...action} />
           ))}
