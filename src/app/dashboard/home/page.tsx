@@ -15,21 +15,23 @@ interface QuickActionProps {
 }
 
 const QuickActionCard: React.FC<QuickActionProps> = ({ title, description, icon: Icon, href, isPrimary }) => (
-  <Card className={`shadow-lg hover:shadow-xl transition-shadow ${isPrimary ? 'bg-primary/5 hover:bg-primary/10 border-primary/30' : 'hover:border-muted-foreground/20'}`}>
+  <Card className={`shadow-lg hover:shadow-xl transition-shadow flex flex-col ${isPrimary ? 'bg-primary/5 hover:bg-primary/10 border-primary/30' : 'hover:border-muted-foreground/20'}`}>
     <CardHeader className="pb-3">
       <div className="flex items-center gap-3">
         <Icon className={`h-8 w-8 ${isPrimary ? 'text-primary' : 'text-muted-foreground'}`} />
         <CardTitle className="font-headline text-xl">{title}</CardTitle>
       </div>
     </CardHeader>
-    <CardContent>
-      <p className="text-sm text-muted-foreground mb-4 h-10">{description}</p>
-      <Button asChild variant={isPrimary ? "default" : "outline"} className="w-full">
-        <Link href={href}>
-          {title.startsWith("New") || title.startsWith("Start") ? "Start Now" : "Go to " + title}
-          <ArrowRight className="ml-2 h-4 w-4" />
-        </Link>
-      </Button>
+    <CardContent className="flex flex-col flex-grow p-4 pt-0"> {/* Ensure consistent padding and flex behavior */}
+      <p className="text-sm text-muted-foreground mb-4 h-10 flex-shrink-0">{description}</p>
+      <div className="mt-auto"> {/* Pushes button to the bottom */}
+        <Button asChild variant={isPrimary ? "default" : "outline"} className="w-full">
+          <Link href={href}>
+            {title.startsWith("New") || title.startsWith("Start") ? "Start Now" : "Go to " + title}
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Link>
+        </Button>
+      </div>
     </CardContent>
   </Card>
 );
@@ -47,14 +49,14 @@ export default function HomePage() {
       title: "New Takeout Order",
       description: "Create an order for customers to pick up.",
       icon: ShoppingBag,
-      href: "/dashboard/orders", // Link to general order page, can be refined later to preselect type
+      href: "/dashboard/orders", 
       isPrimary: true,
     },
     {
       title: "New Delivery Order",
       description: "Prepare an order for delivery service.",
       icon: Truck,
-      href: "/dashboard/orders", // Link to general order page
+      href: "/dashboard/orders", 
       isPrimary: true,
     },
   ];
@@ -69,8 +71,8 @@ export default function HomePage() {
     {
       title: "Kitchen Display",
       description: "Access the kitchen order display (Mock).",
-      icon: Eye, // Placeholder icon, could be Utensils, etc.
-      href: "#", // Placeholder
+      icon: Eye, 
+      href: "#", 
     },
     {
       title: "Settings",
