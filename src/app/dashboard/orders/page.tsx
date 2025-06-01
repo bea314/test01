@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard, Users, Percent, WalletCards, CircleDollarSign, EyeSlash, StickyNote } from "lucide-react";
+import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard, Users, Percent, WalletCards, CircleDollarSign, EyeOff, StickyNote } from "lucide-react";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import type { OrderItem, MenuItem as MenuItemType, OrderType, Waiter, Order, AllergyTag, PaymentSplitType, DiscountPreset } from '@/lib/types';
@@ -528,7 +528,7 @@ function OrdersPageContent() {
                     </div>
                     <div className="space-y-3">
                          <Label className="font-headline">Discount Options</Label>
-                         <Select value={selectedDiscountId} onValueChange={(value) => {setSelectedDiscountId(value); setIsCourtesy(false);}} >
+                         <Select value={selectedDiscountId} onValueChange={(value) => {setSelectedDiscountId(value === 'none' ? undefined : value); setIsCourtesy(false);}} >
                             <SelectTrigger aria-label="Select Discount">
                                 <SelectValue placeholder="No Discount" />
                             </SelectTrigger>
@@ -630,7 +630,7 @@ function OrdersPageContent() {
                         </div>
                          <div className="flex items-center space-x-2">
                             <Checkbox id="disableReceiptPrint" checked={disableReceiptPrint} onCheckedChange={(checked) => setDisableReceiptPrint(!!checked)} />
-                            <Label htmlFor="disableReceiptPrint" className="flex items-center"><EyeSlash className="mr-1 h-4 w-4"/>No Receipt Print</Label>
+                            <Label htmlFor="disableReceiptPrint" className="flex items-center"><EyeOff className="mr-1 h-4 w-4"/>No Receipt Print</Label>
                         </div>
                     </div>
                 </div>
@@ -653,3 +653,6 @@ export default function OrdersPage() {
     </Suspense>
   )
 }
+
+
+    

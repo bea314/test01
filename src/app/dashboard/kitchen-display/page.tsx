@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Utensils, Clock, CheckCircle, Bell, Zap, Trash2, TvOff } from "lucide-react";
+import { Utensils, Clock, CheckCircle, Bell, Zap, Trash2, MonitorOff } from "lucide-react";
 import type { Order, OrderItem } from '@/lib/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { initialStaff, mockActiveOrders as rawOrders } from '@/lib/mock-data';
-import { MOCK_KITCHEN_DISPLAY_ENABLED } from '@/lib/constants'; // Mock setting
+import { MOCK_KITCHEN_DISPLAY_ENABLED } from '@/lib/constants'; 
 
 const initialKdsOrders: Order[] = JSON.parse(JSON.stringify(rawOrders))
     .map((order: Order) => ({
@@ -29,7 +29,7 @@ const OrderItemStatusBadgeKDS = ({ status }: { status: OrderItem['status'] }) =>
 export default function KitchenDisplayPage() {
   const [kdsOrders, setKdsOrders] = useState<Order[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const kitchenDisplayEnabled = MOCK_KITCHEN_DISPLAY_ENABLED; // Use the mock constant
+  const kitchenDisplayEnabled = MOCK_KITCHEN_DISPLAY_ENABLED; 
 
   useEffect(() => {
     if (kitchenDisplayEnabled) {
@@ -69,13 +69,19 @@ export default function KitchenDisplayPage() {
           const updatedItems = order.items.map(item => 
             item.id === itemId ? { ...item, status: newStatus } : item
           );
+          // Filter out items that are no longer 'pending' or 'preparing'
+          const remainingKitchenItems = updatedItems.filter(item => item.status === 'pending' || item.status === 'preparing');
+          
+          // If an item was marked 'ready', it's removed from KDS view for that order.
+          // If all items in an order are marked ready, the order itself might be removed from KDS.
           return { 
             ...order, 
-            items: updatedItems.filter(item => item.status === 'pending' || item.status === 'preparing')
+            items: remainingKitchenItems
           };
         }
         return order;
       });
+      // Filter out orders that no longer have any items for the kitchen
       return updatedOrders.filter(order => order.items.length > 0);
     });
     alert(`Mock: Item ${itemId} in order ${orderId} updated to ${newStatus}.`);
@@ -94,7 +100,7 @@ export default function KitchenDisplayPage() {
   if (!kitchenDisplayEnabled) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-muted/40 p-4 text-center">
-        <TvOff className="h-24 w-24 text-muted-foreground mb-6" />
+        <MonitorOff className="h-24 w-24 text-muted-foreground mb-6" />
         <h1 className="text-3xl font-headline font-bold text-foreground mb-2">Kitchen Display Disabled</h1>
         <p className="text-lg text-muted-foreground">
           The Kitchen Display System is currently turned off in the application settings.
