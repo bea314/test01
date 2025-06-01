@@ -1,6 +1,6 @@
 
 "use client";
-import { useState, useEffect, Suspense, useMemo, useRef } from 'react';
+import { useState, useEffect, Suspense, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,16 +38,15 @@ import { useToast } from '@/hooks/use-toast';
 
 
 type MenuView = 'grid' | 'list';
-type CheckoutStep = 'summary_and_courtesy' | 'discounts_and_tip' | 'final_review_and_actions' | 'payment_splitting_and_dte';
+type CheckoutSubStep = 'summary_and_courtesy' | 'discounts_and_tip' | 'final_review_and_actions' | 'payment_splitting_and_dte';
 
 
-// Define a type for a single split in the UI
 interface UISplit {
-  id: string; // temp ID for UI key
+  id: string; 
   amountDue: number;
-  amountToPay: string; // string to allow for easier input handling
+  amountToPay: string; 
   paymentMethod?: string;
-  items: OrderItem[]; // items in this split (for 'by_item')
+  items: OrderItem[]; 
   isPaid: boolean;
   dteType?: 'consumidor_final' | 'credito_fiscal';
   dteInvoiceInfo?: DTEInvoiceInfo;
@@ -70,7 +69,7 @@ function OrdersPageContent() {
   const { toast } = useToast();
 
   const [currentStep, setCurrentStep] = useState<'building' | 'checkout'>('building');
-  const [currentCheckoutSubStep, setCurrentCheckoutSubStep] = useState<CheckoutStep>('summary_and_courtesy');
+  const [currentCheckoutSubStep, setCurrentCheckoutSubStep] = useState<CheckoutSubStep>('summary_and_courtesy');
 
   const [newOrderItems, setNewOrderItems] = useState<(Omit<OrderItem, 'id' | 'status' | 'menuItemId'> & { tempId: string; menuItemId: string; price: number; name: string; observations?: string; assignedGuest?: string; quantity: number; isCourtesy?: boolean; })[]>([]);
   const [existingOrderItems, setExistingOrderItems] = useState<OrderItem[]>([]);
@@ -131,21 +130,19 @@ function OrdersPageContent() {
   const [tipAmount, setTipAmount] = useState(0);
 
   const currentOrderItemsForCheckoutDisplay = useMemo(() => {
+    let items: (OrderItem | (Omit<OrderItem, 'id'|'status'> & {id:string; status: OrderItem['status']}))[] = [];
     if (pageMode === 'checkout_existing' && loadedOrderForCheckout) {
-        return loadedOrderForCheckout.items
-            .filter(i => i.status !== 'cancelled')
-            .map(item => ({ ...item, isCourtesy: itemCourtesiesCheckout[item.id] || loadedOrderForCheckout.isCourtesy || item.isCourtesy || false }));
+        items = loadedOrderForCheckout.items.filter(i => i.status !== 'cancelled');
+    } else if (pageMode === 'new_order' && currentStep === 'checkout' && newOrderItems.length > 0) {
+        items = newOrderItems.map(item => ({
+            ...item,
+            id: item.tempId, 
+            status: 'pending' as OrderItem['status'], 
+        }));
     }
-     if (pageMode === 'new_order' && currentStep === 'checkout' && newOrderItems.length > 0) {
-      return newOrderItems.map(item => ({
-        ...item,
-        id: item.tempId, 
-        status: 'pending' as OrderItem['status'], 
-        isCourtesy: itemCourtesiesCheckout[item.tempId] || isCourtesyCheckout || item.isCourtesy || false,
-      }));
-    }
-    return [];
+    return items.map(item => ({...item, isCourtesy: itemCourtesiesCheckout[item.id] || isCourtesyCheckout || item.isCourtesy || false }));
   }, [pageMode, loadedOrderForCheckout, newOrderItems, currentStep, itemCourtesiesCheckout, isCourtesyCheckout]);
+
 
   const orderTotalsForCheckout: OrderTotals = useMemo(() => {
     let orderForCalc: Partial<Order> & { items: (OrderItem | (Omit<OrderItem, 'id' | 'status'> & { id: string; status: OrderItem['status']; menuItemId: string; price: number; name: string; }))[] } = { items: [] };
@@ -155,7 +152,6 @@ function OrdersPageContent() {
             ...loadedOrderForCheckout,
             items: currentOrderItemsForCheckoutDisplay as OrderItem[], 
             isCourtesy: isCourtesyCheckout,
-            // Discounts for calculation are now passed explicitly
         };
     } else if (pageMode === 'new_order' && currentStep === 'checkout') {
         orderForCalc = {
@@ -243,11 +239,10 @@ function OrdersPageContent() {
             setSelectedTableId(orderToCheckout.tableId);
             setNumberOfGuests(orderToCheckout.numberOfGuests);
             
-            // Set staged discounts from loaded order if any
             setStagedSelectedDiscountId(orderToCheckout.selectedDiscountId);
             setStagedAppliedCouponCode(orderToCheckout.appliedCouponCode || '');
             setStagedManualDiscountAmount(orderToCheckout.manualDiscountAmount || 0);
-            // Also set applied discounts directly from loaded order
+            
             setAppliedDiscountPreset(orderToCheckout.appliedPresetDiscount || null);
             setAppliedManualDiscountVal(orderToCheckout.appliedManualDiscountValue || 0);
             
@@ -258,7 +253,7 @@ function OrdersPageContent() {
             setTipMode('default'); 
             setManualTipAmount(orderToCheckout.tipAmount || 0);
             if (orderToCheckout.tipAmount > 0) { 
-                const subtotalForTipCalc = calculateOrderTotals(orderToCheckout, orderToCheckout.appliedPresetDiscount || null, orderToCheckout.manualDiscountAmount || 0).subtotal - (calculateOrderTotals(orderToCheckout, orderToCheckout.appliedPresetDiscount || null, orderToCheckout.manualDiscountAmount || 0).discountAmount || 0);
+                const subtotalForTipCalc = calculateOrderTotals(orderToCheckout, orderToCheckout.appliedPresetDiscount || null, orderToCheckout.appliedManualDiscountValue || 0).subtotal - (calculateOrderTotals(orderToCheckout, orderToCheckout.appliedPresetDiscount || null, orderToCheckout.appliedManualDiscountValue || 0).discountAmount || 0);
                 const defaultTip = subtotalForTipCalc * (DEFAULT_TIP_PERCENTAGE / 100);
                 if (Math.abs(orderToCheckout.tipAmount - defaultTip) < 0.01) {
                     setTipMode('default');
@@ -274,7 +269,7 @@ function OrdersPageContent() {
 
             setPaymentSplitType(orderToCheckout.paymentSplitType || 'none');
             setPaymentSplitWays(orderToCheckout.paymentSplitWays || 2);
-            setIssueDtePerSplit(!!orderToCheckout.processedSplits && orderToCheckout.processedSplits.some(ps => ps.dteType));
+            setIssueDtePerSplit(!!orderToCheckout.processedSplits && orderToCheckout.processedSplits.some(ps => ps.dteType && ps.dteType !== 'consumidor_final'));
 
 
             if (orderToCheckout.processedSplits && orderToCheckout.processedSplits.length > 0) {
@@ -294,7 +289,7 @@ function OrdersPageContent() {
             } else {
                 setUiSplits([]);
             }
-            setCurrentStep('checkout'); // Start checkout at the first step
+            setCurrentStep('checkout'); 
             setCurrentCheckoutSubStep('summary_and_courtesy');
         } else {
             toast({ title: "Error", description: `Order ${checkoutOrderIdParam} not found for checkout.`, variant: "destructive" });
@@ -481,13 +476,12 @@ function OrdersPageContent() {
         isCourtesy: false, 
         isOnHold: false,
         disableReceiptPrint: false,
-        tipAmount: 0, // Tip is handled in checkout
-        // No discounts applied at initial send to kitchen
+        tipAmount: 0, 
         appliedPresetDiscount: null,
         manualDiscountAmount: 0,
     };
 
-    const newCreatedOrder = addActiveOrder(orderPayload as any); // Cast for Omit types
+    const newCreatedOrder = addActiveOrder(orderPayload as any); 
     if (!newCreatedOrder) {
         toast({title: "Error", description: "Failed to create order.", variant: "destructive"});
         return;
@@ -502,7 +496,7 @@ function OrdersPageContent() {
             initialTables[tableIndex].currentOrderId = newCreatedOrder.id;
         }
     }
-    router.push(`/dashboard/active-orders/${newCreatedOrder.id}`); // Redirect after sending to kitchen
+    router.push(`/dashboard/active-orders/${newCreatedOrder.id}`); 
   };
 
   const handleAddItemsToActiveOrder = () => {
@@ -533,7 +527,6 @@ function OrdersPageContent() {
     const updatedOrderResult = updateActiveOrder({ 
       id: activeOrder.id, 
       items: updatedOrderItems,
-      // When adding items, we generally don't change applied discounts or tip yet
       appliedPresetDiscount: activeOrder.appliedPresetDiscount,
       manualDiscountAmount: activeOrder.manualDiscountAmount,
       tipAmount: activeOrder.tipAmount
@@ -553,11 +546,10 @@ function OrdersPageContent() {
         const foundByCoupon = mockPresetDiscounts.find(d => d.couponCode?.toLowerCase() === stagedAppliedCouponCode.toLowerCase());
         if (foundByCoupon) {
             presetToApply = foundByCoupon;
-            setStagedSelectedDiscountId(foundByCoupon.id); // Sync dropdown if coupon is valid
+            setStagedSelectedDiscountId(foundByCoupon.id); 
             toast({ title: "Coupon Applied", description: `Discount "${foundByCoupon.name}" selected.` });
         } else {
             toast({ title: "Invalid Coupon", description: "Coupon code not found.", variant: "destructive" });
-            // Optionally clear coupon code or keep it for user correction
         }
     } else if (stagedSelectedDiscountId) {
         presetToApply = mockPresetDiscounts.find(d => d.id === stagedSelectedDiscountId) || null;
@@ -569,7 +561,7 @@ function OrdersPageContent() {
     if (presetToApply || stagedManualDiscountAmount > 0) {
         toast({ title: "Discounts Applied", description: "Order totals have been updated with applied discounts."});
     } else {
-        toast({ title: "Discounts Cleared", description: "No discounts are currently applied."});
+        toast({ title: "Discounts Staged", description: "No new discounts were applied, or previous ones remain."});
     }
   };
 
@@ -581,6 +573,17 @@ function OrdersPageContent() {
     setAppliedManualDiscountVal(0);
     toast({ title: "Discounts Cleared", description: "All discounts have been removed." });
   };
+   const handleRemovePresetDiscount = () => {
+    setStagedSelectedDiscountId(undefined);
+    setAppliedDiscountPreset(null);
+    toast({ title: "Preset Discount Removed", description: "Preset/coupon discount has been cleared." });
+  };
+  const handleRemoveManualDiscount = () => {
+    setStagedManualDiscountAmount(0);
+    setAppliedManualDiscountVal(0);
+    toast({ title: "Manual Discount Removed", description: "Manual dollar discount has been cleared." });
+  };
+
 
   const handleToggleItemCourtesyCheckout = (itemId: string) => {
     setItemCourtesiesCheckout(prev => ({ ...prev, [itemId]: !prev[itemId] }));
@@ -605,7 +608,6 @@ function OrdersPageContent() {
             return;
         }
     }
-
 
     if (paymentSplitType === 'none' && !issueDtePerSplit && overallDteType === 'credito_fiscal' && (!overallDteNit || !overallDteNrc || !overallDteCustomerName)) {
         toast({ title: "DTE Information Incomplete", description: "Please fill all required fields for Crédito Fiscal (full payment).", variant: "destructive" });
@@ -678,10 +680,13 @@ function OrdersPageContent() {
         dteInvoiceInfo: (isCourtesyCheckout || isOnHoldCheckout || (issueDtePerSplit && paymentSplitType !== 'none') || overallDteType !== 'credito_fiscal') ? undefined : { nit: overallDteNit, nrc: overallDteNrc, customerName: overallDteCustomerName },
         tipAmount, 
         
-        // Save the applied discounts
-        appliedPresetDiscount: appliedDiscountPreset,
-        manualDiscountAmount: appliedManualDiscountVal, // Save the *value* that was applied, not the input
+        selectedDiscountId: stagedSelectedDiscountId,
+        appliedCouponCode: stagedAppliedCouponCode,
+        manualDiscountAmount: stagedManualDiscountAmount,
 
+        appliedPresetDiscount: appliedDiscountPreset,
+        appliedManualDiscountValue: appliedManualDiscountVal, 
+        
         isCourtesy: isCourtesyCheckout,
         isOnHold: isOnHoldCheckout, 
         disableReceiptPrint: disableReceiptPrintCheckout,
@@ -694,7 +699,6 @@ function OrdersPageContent() {
         discountAmount: orderTotalsForCheckout.discountAmount,
         totalAmount: finalTotalAmountForCheckout, 
         appliedPresetDiscountValue: orderTotalsForCheckout.appliedPresetDiscountValue,
-        appliedManualDiscountValue: orderTotalsForCheckout.appliedManualDiscountValue,
     };
     
     let finalUpdatedOrder: Order | undefined;
@@ -740,46 +744,78 @@ function OrdersPageContent() {
     router.push('/dashboard/active-orders');
   };
 
+  const activeOrderItemsUncovered = useMemo(() => {
+    return currentOrderItemsForCheckoutDisplay.filter(item => !coveredItemIdsForSplitting.includes(item.id) && !item.isCourtesy);
+  }, [currentOrderItemsForCheckoutDisplay, coveredItemIdsForSplitting, itemCourtesiesCheckout]);
+
+
+  const calculateProportionalCostsForItemizedSplit = useCallback((
+    selectedItems: (OrderItem | (Omit<OrderItem, 'id'|'status'> & {id:string; status: OrderItem['status']}))[],
+    overallOrderTotals: OrderTotals,
+    overallTipAmount: number,
+    allUncoveredNonCourtesyItemsSubtotal: number
+  ) => {
+    const subtotalOfSelectedItems = selectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    
+    let discountForSelectedItems = 0;
+    if (allUncoveredNonCourtesyItemsSubtotal > 0 && (overallOrderTotals.discountAmount || 0) > 0) {
+        const discountRatio = subtotalOfSelectedItems / allUncoveredNonCourtesyItemsSubtotal;
+        discountForSelectedItems = (overallOrderTotals.discountAmount || 0) * discountRatio;
+    }
+    discountForSelectedItems = Math.min(discountForSelectedItems, subtotalOfSelectedItems);
+
+    const subtotalSelectedItemsAfterDiscount = subtotalOfSelectedItems - discountForSelectedItems;
+    const taxForSelectedItems = subtotalSelectedItemsAfterDiscount * IVA_RATE;
+    
+    let tipForSelectedItems = 0;
+    const overallBaseForTip = overallOrderTotals.subtotal - (overallOrderTotals.discountAmount || 0);
+    if (overallBaseForTip > 0 && overallTipAmount > 0) {
+        const tipRatio = subtotalSelectedItemsAfterDiscount / overallBaseForTip;
+        tipForSelectedItems = overallTipAmount * tipRatio;
+    }
+    
+    const totalAmountForThisSplit = subtotalSelectedItemsAfterDiscount + taxForSelectedItems + tipForSelectedItems;
+    
+    return {
+      splitSubtotal: subtotalOfSelectedItems,
+      splitDiscount: discountForSelectedItems,
+      splitTax: taxForSelectedItems,
+      splitTip: tipForSelectedItems,
+      totalAmountForThisSplit,
+    };
+  }, []);
+
 
   useEffect(() => {
     if (currentStep === 'checkout' && (loadedOrderForCheckout || (pageMode === 'new_order' && newOrderItems.length > 0)) && orderTotalsForCheckout) {
-        let activeOrderItemsUncovered: (OrderItem | (Omit<OrderItem, 'id'|'status'> & {id:string; status: OrderItem['status']}))[] = [];
-        if (pageMode === 'checkout_existing' && loadedOrderForCheckout) {
-            activeOrderItemsUncovered = currentOrderItemsForCheckoutDisplay.filter(item => !coveredItemIdsForSplitting.includes(item.id) && !item.isCourtesy);
-        } else if (pageMode === 'new_order') {
-            activeOrderItemsUncovered = currentOrderItemsForCheckoutDisplay.filter(item => !coveredItemIdsForSplitting.includes(item.id) && !item.isCourtesy);
-        }
         
-        const totalOrderAmount = finalTotalAmountForCheckout; 
         let newUiSplitsDraft: UISplit[] = uiSplits.filter(s => s.isPaid); 
 
         if (isOrderFullyPaid || isCourtesyCheckout || isOnHoldCheckout) {
-            setItemsToSplitBy({}); 
-            if (JSON.stringify(newUiSplitsDraft) !== JSON.stringify(uiSplits)) {
-                setUiSplits(newUiSplitsDraft); 
-            }
-            return;
-        }
-
-        if (paymentSplitType === 'equal' && paymentSplitWays > 0) {
-            const paidEqualSplitsCount = newUiSplitsDraft.filter(s => s.id.startsWith('split-eq-')).length;
-            const numberOfRemainingEqualSplits = paymentSplitWays - paidEqualSplitsCount;
+             // No need to add more unpaid splits if order is settled
+        } else if (paymentSplitType === 'equal' && paymentSplitWays > 0) {
+            const currentPaidEqualSplitsCount = newUiSplitsDraft.filter(s => s.id.startsWith('split-eq-')).length;
+            const numberOfRemainingEqualSplits = paymentSplitWays - currentPaidEqualSplitsCount;
+            
             const totalPaidAmountInEqualSplits = newUiSplitsDraft
                 .filter(s => s.id.startsWith('split-eq-'))
                 .reduce((sum, s) => sum + parseFloat(s.amountToPay || '0'), 0);
 
-            const remainingAmountToSplitEqually = totalOrderAmount - totalPaidAmountInEqualSplits;
+            const remainingAmountToSplitEqually = finalTotalAmountForCheckout - totalPaidAmountInEqualSplits;
             
             if (numberOfRemainingEqualSplits > 0 && remainingAmountToSplitEqually > 0.001) {
                 const amountPerRemainingSplit = remainingAmountToSplitEqually / numberOfRemainingEqualSplits;
                  for (let i = 0; i < numberOfRemainingEqualSplits; i++) {
+                    const splitId = `split-eq-${currentPaidEqualSplitsCount + i}`;
+                    const existingSplit = uiSplits.find(s => s.id === splitId);
                     newUiSplitsDraft.push({
-                        id: `split-eq-${paidEqualSplitsCount + i}`, 
+                        id: splitId, 
                         amountDue: amountPerRemainingSplit,
                         amountToPay: amountPerRemainingSplit.toFixed(2),
                         items: [], 
                         isPaid: false,
-                        dteType: 'consumidor_final'
+                        dteType: issueDtePerSplit ? (existingSplit?.dteType || 'consumidor_final') : undefined,
+                        dteInvoiceInfo: issueDtePerSplit ? (existingSplit?.dteInvoiceInfo) : undefined,
                     });
                 }
             }
@@ -787,82 +823,52 @@ function OrdersPageContent() {
             const itemsSelectedForThisSplitCandidates = activeOrderItemsUncovered.filter(item => itemsToSplitBy[item.id]);
             
             if (itemsSelectedForThisSplitCandidates.length > 0) {
-                const subtotalOfSelectedItems = itemsSelectedForThisSplitCandidates.reduce((sum, item) => sum + (item.isCourtesy ? 0 : item.price * item.quantity), 0);
-                
-                let discountForSelectedItems = 0;
-                const totalSubtotalOfAllUncoveredNonCourtesyItems = activeOrderItemsUncovered.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                
-                if (totalSubtotalOfAllUncoveredNonCourtesyItems > 0 && (orderTotalsForCheckout.discountAmount || 0) > 0) {
-                    const discountRatio = subtotalOfSelectedItems / totalSubtotalOfAllUncoveredNonCourtesyItems;
-                    discountForSelectedItems = (orderTotalsForCheckout.discountAmount || 0) * discountRatio;
-                }
-                discountForSelectedItems = Math.min(discountForSelectedItems, subtotalOfSelectedItems);
-
-                const subtotalSelectedItemsAfterDiscount = subtotalOfSelectedItems - discountForSelectedItems;
-                const taxForSelectedItems = subtotalSelectedItemsAfterDiscount * IVA_RATE;
-                
-                let tipForSelectedItems = 0;
-                const totalSubtotalAfterAllDiscountsOnOrder = orderTotalsForCheckout.subtotal - (orderTotalsForCheckout.discountAmount || 0);
-
-                if (totalSubtotalAfterAllDiscountsOnOrder > 0 && tipAmount > 0) {
-                    const tipRatio = subtotalSelectedItemsAfterDiscount / totalSubtotalAfterAllDiscountsOnOrder;
-                    tipForSelectedItems = tipAmount * tipRatio;
-                }
-                
-                const itemsAmountDueWithTaxAndTipThisSplit = subtotalSelectedItemsAfterDiscount + taxForSelectedItems + tipForSelectedItems;
-                
-                const itemizedSplitUIData = {
-                  splitSubtotal: subtotalOfSelectedItems,
-                  splitDiscount: discountForSelectedItems,
-                  splitTax: taxForSelectedItems,
-                  splitTip: tipForSelectedItems,
-                };
-                
-                const existingUnpaidSplitIndex = newUiSplitsDraft.findIndex(s => 
-                    !s.isPaid && 
-                    s.id.startsWith('split-item-') && 
-                    s.items.length === itemsSelectedForThisSplitCandidates.length &&
-                    s.items.every(it => itemsSelectedForThisSplitCandidates.some(selIt => selIt.id === it.id))
+                const allUncoveredNonCourtesyItemsSubtotal = activeOrderItemsUncovered.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                const {
+                    splitSubtotal,
+                    splitDiscount,
+                    splitTax,
+                    splitTip,
+                    totalAmountForThisSplit: itemsAmountDueWithTaxAndTipThisSplit,
+                } = calculateProportionalCostsForItemizedSplit(
+                    itemsSelectedForThisSplitCandidates,
+                    orderTotalsForCheckout,
+                    tipAmount,
+                    allUncoveredNonCourtesyItemsSubtotal
                 );
+                
+                const existingActiveSplit = uiSplits.find(s => s.id === 'split-item-active-config');
 
-                if (existingUnpaidSplitIndex > -1) { 
-                    newUiSplitsDraft[existingUnpaidSplitIndex] = {
-                        ...newUiSplitsDraft[existingUnpaidSplitIndex],
-                        amountDue: itemsAmountDueWithTaxAndTipThisSplit,
-                        amountToPay: itemsAmountDueWithTaxAndTipThisSplit.toFixed(2),
-                        ...itemizedSplitUIData,
-                    };
-                } else if (itemsAmountDueWithTaxAndTipThisSplit > 0.001) { 
-                     newUiSplitsDraft.push({
-                        id: `split-item-${nextItemizedSplitIdCounter.current++}`,
+                if (itemsAmountDueWithTaxAndTipThisSplit > 0.001) {
+                    newUiSplitsDraft.push({
+                        id: 'split-item-active-config',
                         amountDue: itemsAmountDueWithTaxAndTipThisSplit,
                         amountToPay: itemsAmountDueWithTaxAndTipThisSplit.toFixed(2),
                         items: itemsSelectedForThisSplitCandidates as OrderItem[],
                         isPaid: false,
-                        dteType: 'consumidor_final',
-                        ...itemizedSplitUIData,
+                        dteType: issueDtePerSplit ? (existingActiveSplit?.dteType || 'consumidor_final') : undefined,
+                        dteInvoiceInfo: issueDtePerSplit ? (existingActiveSplit?.dteInvoiceInfo) : undefined,
+                        splitSubtotal, splitDiscount, splitTax, splitTip,
                     });
                 }
-            } else { 
-                newUiSplitsDraft = newUiSplitsDraft.filter(s => s.isPaid || !s.id.startsWith('split-item-') || (s.id.startsWith('split-item-') && s.items.some(it => itemsToSplitBy[it.id])));
             }
-
-        } else { 
-             if (newUiSplitsDraft.filter(s => !s.isPaid).length === 0 && !isOrderFullyPaid && totalOrderAmount > 0.001) { 
+        } else { // 'none' split type or other catch-all
+             if (newUiSplitsDraft.filter(s => !s.isPaid).length === 0 && !isOrderFullyPaid && finalTotalAmountForCheckout > 0.001) { 
                 newUiSplitsDraft.push({
                     id: 'split-none-full',
-                    amountDue: totalOrderAmount,
-                    amountToPay: totalOrderAmount.toFixed(2),
+                    amountDue: finalTotalAmountForCheckout,
+                    amountToPay: finalTotalAmountForCheckout.toFixed(2),
                     items: currentOrderItemsForCheckoutDisplay.filter(item => !item.isCourtesy) as OrderItem[], 
                     isPaid: false,
-                    dteType: 'consumidor_final'
+                    dteType: undefined, // DTE for full payment is handled by overallDteType
                 });
             } else if (newUiSplitsDraft.length === 1 && newUiSplitsDraft[0].id === 'split-none-full' && !newUiSplitsDraft[0].isPaid) {
-                newUiSplitsDraft[0].amountDue = totalOrderAmount;
-                newUiSplitsDraft[0].amountToPay = totalOrderAmount.toFixed(2);
+                newUiSplitsDraft[0].amountDue = finalTotalAmountForCheckout;
+                newUiSplitsDraft[0].amountToPay = finalTotalAmountForCheckout.toFixed(2);
                 newUiSplitsDraft[0].items = currentOrderItemsForCheckoutDisplay.filter(item => !item.isCourtesy) as OrderItem[];
             }
         }
+
         if (JSON.stringify(newUiSplitsDraft) !== JSON.stringify(uiSplits)) {
           setUiSplits(newUiSplitsDraft);
         }
@@ -871,16 +877,21 @@ function OrdersPageContent() {
           setUiSplits([]);
         }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paymentSplitType, paymentSplitWays, itemsToSplitBy, currentStep, loadedOrderForCheckout, pageMode, newOrderItems, currentOrderItemsForCheckoutDisplay, finalTotalAmountForCheckout, tipAmount, coveredItemIdsForSplitting, isOrderFullyPaid, isCourtesyCheckout, isOnHoldCheckout, orderTotalsForCheckout, uiSplits]);
+  }, [paymentSplitType, paymentSplitWays, itemsToSplitBy, currentStep, pageMode, newOrderItems, currentOrderItemsForCheckoutDisplay, finalTotalAmountForCheckout, tipAmount, coveredItemIdsForSplitting, isOrderFullyPaid, isCourtesyCheckout, isOnHoldCheckout, orderTotalsForCheckout, uiSplits, issueDtePerSplit, loadedOrderForCheckout, activeOrderItemsUncovered, calculateProportionalCostsForItemizedSplit]);
 
 
  const handlePaySplit = (splitId: string) => {
     const currentSplitIndex = uiSplits.findIndex(s => s.id === splitId);
-    if (currentSplitIndex === -1) return;
+    if (currentSplitIndex === -1) {
+        toast({ title: "Error", description: "Split not found.", variant: "destructive"});
+        return;
+    }
 
     const currentSplit = uiSplits[currentSplitIndex];
-    if (currentSplit.isPaid) return;
+    if (currentSplit.isPaid) {
+        toast({ title: "Already Paid", description: "This share has already been paid.", variant: "default"});
+        return;
+    }
     
     if (!currentSplit.paymentMethod) {
       toast({ title: "Payment Method Needed", description: "Select a payment method for this share.", variant: "destructive" });
@@ -891,7 +902,7 @@ function OrdersPageContent() {
       toast({ title: "Invalid Amount", description: "Enter a valid amount to pay for this share.", variant: "destructive" });
       return;
     }
-    if (amountToPayNum > currentSplit.amountDue + 0.01 && paymentSplitType !== 'none') { 
+    if (amountToPayNum > currentSplit.amountDue + 0.01 ) { 
       toast({ title: "Overpayment Attempt", description: `Payment ($${amountToPayNum.toFixed(2)}) exceeds amount due for this share ($${currentSplit.amountDue.toFixed(2)}). Please adjust.`, variant: "destructive" });
       return;
     }
@@ -900,13 +911,23 @@ function OrdersPageContent() {
       return;
     }
 
+    let newSplitIdForPaidRecord = splitId;
+    if (splitId === 'split-item-active-config') { // Assign permanent ID when paying the active itemized split
+        newSplitIdForPaidRecord = `split-item-${nextItemizedSplitIdCounter.current++}`;
+    }
+
+
     setUiSplits(prevSplits => {
-        const newSplits = [...prevSplits];
-        newSplits[currentSplitIndex] = { ...newSplits[currentSplitIndex], isPaid: true, amountToPay: amountToPayNum.toFixed(2) };
-        return newSplits;
+        const newSplits = prevSplits.map(s => 
+            s.id === splitId 
+            ? { ...s, id: newSplitIdForPaidRecord, isPaid: true, amountToPay: amountToPayNum.toFixed(2) } 
+            : s
+        );
+        // If the active itemized split was paid, remove the temporary one if it's still somehow there
+        return newSplits.filter(s => s.id !== 'split-item-active-config' || s.isPaid);
     });
 
-    if (paymentSplitType === 'by_item') {
+    if (paymentSplitType === 'by_item' && splitId === 'split-item-active-config') {
       const paidSplitItemsIds = currentSplit.items.map(i => i.id);
       setCoveredItemIdsForSplitting(prevCovered => [...new Set([...prevCovered, ...paidSplitItemsIds])]);
       setItemsToSplitBy({}); 
@@ -956,7 +977,7 @@ function OrdersPageContent() {
   }, [loadedOrderForCheckout, pageMode, currentStep, newOrderItems]);
 
 
-  const checkoutStepTitles: Record<CheckoutStep, string> = {
+  const checkoutStepTitles: Record<CheckoutSubStep, string> = {
     summary_and_courtesy: "Order Summary & Item Courtesy",
     discounts_and_tip: "Discounts & Tip",
     final_review_and_actions: "Final Review & Actions",
@@ -966,7 +987,7 @@ function OrdersPageContent() {
   const handleNextCheckoutStep = () => {
     if (currentCheckoutSubStep === 'summary_and_courtesy') setCurrentCheckoutSubStep('discounts_and_tip');
     else if (currentCheckoutSubStep === 'discounts_and_tip') {
-        handleApplyStagedDiscounts(); // Apply discounts before moving to final review
+        // Discounts are applied via button, so just move to next step
         setCurrentCheckoutSubStep('final_review_and_actions');
     }
     else if (currentCheckoutSubStep === 'final_review_and_actions') setCurrentCheckoutSubStep('payment_splitting_and_dte');
@@ -1329,7 +1350,6 @@ function OrdersPageContent() {
                 <CardDescription>Order #{pageMode === 'checkout_existing' && loadedOrderForCheckout ? loadedOrderForCheckout.id.slice(-6) : 'New Order'} - Step: <span className="font-semibold text-primary">{checkoutStepTitles[currentCheckoutSubStep]}</span></CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-                {/* Step 1: Order Summary & Item Courtesy */}
                 {currentCheckoutSubStep === 'summary_and_courtesy' && (
                     <div>
                         <h4 className="font-semibold mb-2 text-lg">Order Summary & Item Courtesy</h4>
@@ -1360,24 +1380,22 @@ function OrdersPageContent() {
                                             <TooltipContent><p>Mark this item as courtesy (free of charge).</p></TooltipContent>
                                             </Tooltip>
                                         </TooltipProvider>
-                                        {paymentSplitType === 'by_item' && !isCourtesyCheckout && !isOnHoldCheckout && !isOrderFullyPaid && (
-                                          <TooltipProvider>
-                                              <Tooltip>
-                                                  <TooltipTrigger asChild>
-                                                      <div className="flex items-center space-x-1.5">
-                                                          <CheckSquare className={`h-5 w-5 ${itemsToSplitBy[item.id] ? 'text-primary' : (coveredItemIdsForSplitting.includes(item.id) ? 'text-green-500' : 'text-muted-foreground')}`} />
-                                                          <Checkbox
-                                                              id={`split-item-sel-${item.id}`}
-                                                              checked={!!itemsToSplitBy[item.id]}
-                                                              onCheckedChange={(checked) => setItemsToSplitBy(prev => ({ ...prev, [item.id]: !!checked }))}
-                                                              disabled={coveredItemIdsForSplitting.includes(item.id) || itemCourtesiesCheckout[item.id]}
-                                                          />
-                                                      </div>
-                                                  </TooltipTrigger>
-                                                  <TooltipContent><p>{coveredItemIdsForSplitting.includes(item.id) ? "Item covered in a paid split" : (itemCourtesiesCheckout[item.id] ? "Courtesy items cannot be split" : "Select this item for the current payment share")}</p></TooltipContent>
-                                              </Tooltip>
-                                          </TooltipProvider>
-                                        )}
+                                        <TooltipProvider>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <div className="flex items-center space-x-1.5">
+                                                        <CheckSquare className={`h-5 w-5 ${itemsToSplitBy[item.id] ? 'text-primary' : (coveredItemIdsForSplitting.includes(item.id) ? 'text-green-500' : 'text-muted-foreground')}`} />
+                                                        <Checkbox
+                                                            id={`split-item-sel-${item.id}`}
+                                                            checked={!!itemsToSplitBy[item.id]}
+                                                            onCheckedChange={(checked) => setItemsToSplitBy(prev => ({ ...prev, [item.id]: !!checked }))}
+                                                            disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid || coveredItemIdsForSplitting.includes(item.id) || itemCourtesiesCheckout[item.id]}
+                                                        />
+                                                    </div>
+                                                </TooltipTrigger>
+                                                <TooltipContent><p>{coveredItemIdsForSplitting.includes(item.id) ? "Item covered in a paid split" : (itemCourtesiesCheckout[item.id] ? "Courtesy items cannot be split" : "Select this item for the current payment share")}</p></TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
                                     </div>
                                 </div>
                             ))}
@@ -1414,8 +1432,8 @@ function OrdersPageContent() {
 
                 {currentCheckoutSubStep === 'discounts_and_tip' && (
                     <div className="space-y-6">
-                        <Card className="p-4 border shadow-sm">
-                             <CardHeader className="p-0 pb-3 mb-3 border-b">
+                         <Card className="p-4 border shadow-sm">
+                            <CardHeader className="p-0 pb-3 mb-3 border-b">
                                 <CardTitle className="font-headline text-lg flex items-center"><TicketPercent className="mr-2 h-5 w-5 text-primary"/>Applied Discounts</CardTitle>
                             </CardHeader>
                             <CardContent className="p-0 space-y-2">
@@ -1429,6 +1447,9 @@ function OrdersPageContent() {
                                         <span>Preset: {appliedDiscountPreset.name} ({appliedDiscountPreset.percentage}%)</span>
                                         <div className="flex items-center gap-1">
                                            <span>-${orderTotalsForCheckout.appliedPresetDiscountValue.toFixed(2)}</span>
+                                           <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive" onClick={handleRemovePresetDiscount} disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}>
+                                                <XCircle className="h-4 w-4"/>
+                                           </Button>
                                         </div>
                                     </div>
                                 )}
@@ -1437,18 +1458,21 @@ function OrdersPageContent() {
                                         <span>Manual Discount</span>
                                         <div className="flex items-center gap-1">
                                             <span>-${orderTotalsForCheckout.appliedManualDiscountValue.toFixed(2)}</span>
+                                            <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive" onClick={handleRemoveManualDiscount} disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}>
+                                                <XCircle className="h-4 w-4"/>
+                                           </Button>
                                         </div>
                                     </div>
                                 )}
                                  {( (appliedDiscountPreset || appliedManualDiscountVal > 0) && !isCourtesyCheckout ) && (
                                     <Button variant="link" size="sm" className="text-destructive p-0 h-auto mt-2" onClick={handleClearAppliedDiscounts} disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}>
-                                        <MinusCircle className="mr-1 h-3 w-3"/> Clear Applied Discounts
+                                        <MinusCircle className="mr-1 h-3 w-3"/> Clear All Applied Discounts
                                     </Button>
                                  )}
                             </CardContent>
                         </Card>
                         <Separator />
-                         <Card className="p-4 border shadow-sm">
+                        <Card className="p-4 border shadow-sm">
                             <CardHeader className="p-0 pb-3">
                                 <CardTitle className="font-headline text-lg flex items-center"><PlusCircle className="mr-2 h-5 w-5 text-primary"/>Add / Modify Discount</CardTitle>
                             </CardHeader>
@@ -1539,10 +1563,10 @@ function OrdersPageContent() {
                         </Card>
                     </div>
                 )}
-
+                
                 {currentCheckoutSubStep === 'final_review_and_actions' && (
                      <div className="space-y-6">
-                        <h4 className="font-semibold text-lg mb-1">Final Review & Actions</h4>
+                        <h4 className="font-semibold text-lg mb-1">Final Review & Order Actions</h4>
                         <div className="space-y-1 text-sm border p-3 rounded-md bg-muted/30">
                             <p className="font-medium text-md">Order Total Summary:</p>
                              <div className="flex justify-between"><span>Subtotal (after item courtesies):</span> <span>${orderTotalsForCheckout.subtotal.toFixed(2)}</span></div>
@@ -1579,7 +1603,7 @@ function OrdersPageContent() {
                                 </div>
                             </div>
                         </div>
-                         {paymentSplitType === 'none' && ( // Only show full payment options if not splitting
+                         {paymentSplitType === 'none' && ( 
                             <Button 
                                 className="w-full" 
                                 size="lg" 
@@ -1608,7 +1632,6 @@ function OrdersPageContent() {
                                     setItemsToSplitBy({}); 
                                     setUiSplits(prev => prev.filter(s => s.isPaid)); 
                                     setCoveredItemIdsForSplitting(prev => uiSplits.filter(s => s.isPaid).flatMap(s => s.items.map(i => i.id)));
-                                    if (value === 'none') setIssueDtePerSplit(false); 
                                 }} 
                                 disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}
                             >
@@ -1682,7 +1705,7 @@ function OrdersPageContent() {
                                 <CardHeader className="p-0 pb-3">
                                     <CardTitle className="text-md flex justify-between items-center">
                                         <span>
-                                        {paymentSplitType === 'equal' ? `Share ${index + 1} of ${paymentSplitWays}` : paymentSplitType === 'by_item' ? `Itemized Payment Share ${uiSplits.filter(s => s.id.startsWith('split-item-')).findIndex(s => s.id === split.id) + 1}` : 'Full Payment'}
+                                        {paymentSplitType === 'equal' ? `Share ${index + 1} of ${paymentSplitWays}` : split.id === 'split-item-active-config' ? 'Current Itemized Share (Configuring)' : (split.id.startsWith('split-item-') ? `Itemized Payment Share` : 'Full Payment')}
                                         </span>
                                         {split.isPaid && <Badge className="ml-2 bg-green-600 text-white">Paid</Badge>}
                                     </CardTitle>
@@ -1735,7 +1758,7 @@ function OrdersPageContent() {
                                                         value={split.dteType || 'consumidor_final'} 
                                                         onValueChange={val => {
                                                             const newDteTypeVal = val as 'consumidor_final' | 'credito_fiscal';
-                                                            setUiSplits(prev => prev.map(s => s.id === split.id ? {...s, dteType: newDteTypeVal, dteInvoiceInfo: newDteTypeVal === 'consumidor_final' ? undefined : s.dteInvoiceInfo } : s))
+                                                            setUiSplits(prev => prev.map(s => s.id === split.id ? {...s, dteType: newDteTypeVal, dteInvoiceInfo: newDteTypeVal === 'consumidor_final' ? undefined : (s.dteInvoiceInfo || {nit:'',nrc:'',customerName:''}) } : s))
                                                         }}
                                                     >
                                                         <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
@@ -1749,19 +1772,19 @@ function OrdersPageContent() {
                                                             <Input 
                                                                 placeholder="NIT" 
                                                                 value={split.dteInvoiceInfo?.nit || ''} 
-                                                                onChange={e => setUiSplits(prev => prev.map(s => s.id === split.id ? {...s, dteInvoiceInfo: {...s.dteInvoiceInfo, nit: e.target.value}} : s))}
+                                                                onChange={e => setUiSplits(prev => prev.map(s => s.id === split.id ? {...s, dteInvoiceInfo: {...(s.dteInvoiceInfo || {nit:'',nrc:'',customerName:''}), nit: e.target.value}} : s))}
                                                                 className="h-8 text-xs"
                                                             />
                                                             <Input 
                                                                 placeholder="NRC" 
                                                                 value={split.dteInvoiceInfo?.nrc || ''} 
-                                                                onChange={e => setUiSplits(prev => prev.map(s => s.id === split.id ? {...s, dteInvoiceInfo: {...s.dteInvoiceInfo, nrc: e.target.value}} : s))}
+                                                                onChange={e => setUiSplits(prev => prev.map(s => s.id === split.id ? {...s, dteInvoiceInfo: {...(s.dteInvoiceInfo || {nit:'',nrc:'',customerName:''}), nrc: e.target.value}} : s))}
                                                                 className="h-8 text-xs"
                                                             />
                                                             <Input 
                                                                 placeholder="Customer Name" 
                                                                 value={split.dteInvoiceInfo?.customerName || ''} 
-                                                                onChange={e => setUiSplits(prev => prev.map(s => s.id === split.id ? {...s, dteInvoiceInfo: {...s.dteInvoiceInfo, customerName: e.target.value}} : s))}
+                                                                onChange={e => setUiSplits(prev => prev.map(s => s.id === split.id ? {...s, dteInvoiceInfo: {...(s.dteInvoiceInfo || {nit:'',nrc:'',customerName:''}), customerName: e.target.value}} : s))}
                                                                 className="h-8 text-xs"
                                                             />
                                                         </div>
@@ -1788,7 +1811,7 @@ function OrdersPageContent() {
                             <p className="text-sm text-center text-muted-foreground">All configured shares paid. If total isn't covered, adjust shares or add new itemized payments.</p>
                         )}
 
-                        {paymentSplitType !== 'none' && ( // Finalize button for split payments
+                        {paymentSplitType !== 'none' && ( 
                              <Button 
                                 className="w-full mt-4" 
                                 size="lg" 
@@ -1803,13 +1826,13 @@ function OrdersPageContent() {
                             </Button>
                         )}
 
-                        {paymentSplitType === 'none' && !issueDtePerSplit && !isCourtesyCheckout && !isOnHoldCheckout && !isOrderFullyPaid && finalTotalAmountForCheckout > 0 && ( 
+                        {paymentSplitType === 'none' && !isCourtesyCheckout && !isOnHoldCheckout && !isOrderFullyPaid && finalTotalAmountForCheckout > 0 && ( 
                             <Card className="p-4 bg-muted/20 mt-4">
                                 <CardHeader className="p-0 pb-3">
                                     <CardTitle className="text-md flex items-center"><FileText className="mr-2 h-4 w-4 text-primary"/>DTE Invoice (El Salvador) - Full Order</CardTitle>
                                 </CardHeader>
                                 <CardContent className="p-0 space-y-3">
-                                     <Select value={overallDteType} onValueChange={(value) => setOverallDteType(value as 'consumidor_final' | 'credito_fiscal')} disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}>
+                                     <Select value={overallDteType} onValueChange={(value) => setOverallDteType(value as 'consumidor_final' | 'credito_fiscal')} disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid || issueDtePerSplit}>
                                         <SelectTrigger aria-label="DTE Document Type">
                                             <SelectValue placeholder="Select DTE Type"/>
                                         </SelectTrigger>
@@ -1818,7 +1841,7 @@ function OrdersPageContent() {
                                             <SelectItem value="credito_fiscal">Crédito Fiscal</SelectItem>
                                         </SelectContent>
                                     </Select>
-                                    {overallDteType === 'credito_fiscal' && (
+                                    {overallDteType === 'credito_fiscal' && !issueDtePerSplit && (
                                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                                             <Input placeholder="NIT Cliente" value={overallDteNit} onChange={e => setOverallDteNit(e.target.value)} aria-label="DTE NIT Cliente" disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}/>
                                             <Input placeholder="NRC Cliente" value={overallDteNrc} onChange={e => setOverallDteNrc(e.target.value)} aria-label="DTE NRC Cliente" disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}/>
@@ -1858,7 +1881,10 @@ function OrdersPageContent() {
                 {(currentOrderItemsForCheckoutDisplay.length > 0 || loadedOrderForCheckout) && (
                     <Button 
                         onClick={handleNextCheckoutStep} 
-                        disabled={currentCheckoutSubStep === 'payment_splitting_and_dte' || (currentCheckoutSubStep === 'final_review_and_actions' && paymentSplitType !== 'none' && !isCourtesyCheckout && !isOnHoldCheckout && !isOrderFullyPaid) }
+                         disabled={
+                            currentCheckoutSubStep === 'payment_splitting_and_dte' ||
+                            (currentCheckoutSubStep === 'final_review_and_actions' && paymentSplitType !== 'none' && !isCourtesyCheckout && !isOnHoldCheckout && !isOrderFullyPaid)
+                        }
                     >
                         Next Step <ArrowRight className="ml-2 h-4 w-4"/>
                     </Button>
