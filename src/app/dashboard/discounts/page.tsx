@@ -9,7 +9,7 @@ import type { DiscountPreset } from '@/lib/types';
 import { mockPresetDiscounts, initialMenuItems, mockCategories } from '@/lib/mock-data';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge'; // Added import
+import { Badge } from '@/components/ui/badge';
 
 export default function DiscountsPage() {
   const [discounts, setDiscounts] = useState<DiscountPreset[]>(mockPresetDiscounts);
@@ -61,8 +61,8 @@ export default function DiscountsPage() {
           <CardDescription>View and manage available preset discounts. These can be applied during order checkout.</CardDescription>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="max-h-[calc(100vh-25rem)]">
-          <div className="space-y-3 pr-2">
+          <ScrollArea className="max-h-[calc(100vh-25rem)]"> {/* Ensure this max-h is appropriate */}
+          <div className="space-y-3 pr-2"> {/* pr-2 to prevent scrollbar overlap */}
             {discounts.length === 0 && (
               <p className="text-muted-foreground py-10 text-center">No preset discounts configured. Click "Add New Preset Discount" to create one.</p>
             )}

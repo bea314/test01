@@ -176,18 +176,14 @@ export let initialTables: RestaurantTable[] = [
 ];
 
 export const calculateOrderTotals = (order: Order): Order => {
-  // Consider only non-cancelled items for subtotal
   const activeItems = order.items.filter(item => item.status !== 'cancelled');
   
-  // Calculate subtotal, considering item-specific courtesy
   const subtotal = activeItems.reduce((sum, item) => {
     return sum + (item.isCourtesy ? 0 : item.price * item.quantity);
   }, 0);
 
-  let discountAmount = 0;
-  if (order.isCourtesy) { // Overall order courtesy
-    discountAmount = subtotal;
-  } else if (order.selectedDiscountId) {
+  let presetDiscountValue = 0;
+  if (!order.isCourtesy && order.selectedDiscountId) {
     const discountPreset = mockPresetDiscounts.find(d => d.id === order.selectedDiscountId);
     if (discountPreset) {
       let discountableSubtotal = 0;
@@ -201,27 +197,22 @@ export const calculateOrderTotals = (order: Order): Order => {
            .filter((item, index) => !item.isCourtesy && discountPreset.applicableCategoryIds!.includes(itemCategories[index] || ''))
            .reduce((sum, item) => sum + item.price * item.quantity, 0);
       } else {
-        // Discount applies to all non-courtesy items if no specific applicability
         discountableSubtotal = activeItems
           .filter(item => !item.isCourtesy)
           .reduce((sum, item) => sum + item.price * item.quantity, 0);
       }
-      discountAmount = discountableSubtotal * (discountPreset.percentage / 100);
+      presetDiscountValue = discountableSubtotal * (discountPreset.percentage / 100);
     }
   }
   
-  // Apply manual dollar discount after percentage discount, if any
-  let subtotalAfterPercentageDiscount = subtotal - discountAmount;
-  if (order.manualDiscountAmount && order.manualDiscountAmount > 0 && !order.isCourtesy) {
-    // Ensure manual discount doesn't make subtotal negative
-    const actualManualDiscount = Math.min(subtotalAfterPercentageDiscount, order.manualDiscountAmount);
-    discountAmount += actualManualDiscount; // Add to total discount shown
-    // Subtotal for tax calculation is further reduced
-    subtotalAfterPercentageDiscount -= actualManualDiscount;
+  const subtotalAfterPresetDiscount = subtotal - presetDiscountValue;
+  let manualDiscountValue = 0;
+  if (!order.isCourtesy && order.manualDiscountAmount && order.manualDiscountAmount > 0) {
+    manualDiscountValue = Math.min(subtotalAfterPresetDiscount, order.manualDiscountAmount);
   }
 
-
-  const subtotalAfterAllDiscounts = subtotal - discountAmount; // This is the base for tax & tip
+  const finalDiscountAmount = order.isCourtesy ? subtotal : presetDiscountValue + manualDiscountValue;
+  const subtotalAfterAllDiscounts = subtotal - finalDiscountAmount;
   
   const taxAmount = order.isCourtesy ? 0 : subtotalAfterAllDiscounts * IVA_RATE;
   const tipAmount = order.isCourtesy ? 0 : order.tipAmount || 0;
@@ -230,8 +221,8 @@ export const calculateOrderTotals = (order: Order): Order => {
 
   return {
     ...order,
-    subtotal, // Original subtotal before any discounts
-    discountAmount, // Total combined discount (preset + manual if applicable)
+    subtotal,
+    discountAmount: finalDiscountAmount,
     taxAmount,
     tipAmount,
     totalAmount,
