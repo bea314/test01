@@ -54,6 +54,8 @@ export interface ProcessedPaymentSplit {
   paymentMethod: string;
   itemsCovered?: string[]; // item IDs if split by item
   shareNumber?: number; // if split equally
+  dteType?: 'consumidor_final' | 'credito_fiscal';
+  dteInvoiceInfo?: DTEInvoiceInfo;
 }
 
 export interface Order {
@@ -70,9 +72,9 @@ export interface Order {
   discountAmount: number;
   manualDiscountAmount?: number; // For manual dollar discount
   totalAmount: number;
-  paymentMethod?: 'cash' | 'credit_card' | 'digital_wallet';
-  dteInvoiceInfo?: DTEInvoiceInfo;
-  dteType?: 'consumidor_final' | 'credito_fiscal';
+  paymentMethod?: 'cash' | 'credit_card' | 'digital_wallet'; // Overall if not split
+  dteInvoiceInfo?: DTEInvoiceInfo; // Overall if not split
+  dteType?: 'consumidor_final' | 'credito_fiscal'; // Overall if not split
   createdAt: string;
   updatedAt: string;
   isCourtesy?: boolean; // For overall order courtesy
