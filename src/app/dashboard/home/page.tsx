@@ -11,11 +11,10 @@ interface QuickActionProps {
   description: string;
   icon: React.ElementType;
   href: string;
-  isPrimary?: boolean;
 }
 
 const QuickActionCard: React.FC<QuickActionProps> = ({ title, description, icon: Icon, href }) => (
-  <Card className={`shadow-lg hover:shadow-xl transition-shadow flex flex-col bg-primary/5 hover:bg-primary/10 border-primary/30 aspect-square`}>
+  <Card className={`shadow-lg hover:shadow-xl transition-shadow flex flex-col bg-card hover:bg-muted/30 border`}>
     <CardHeader className="pb-3">
       <div className="flex items-center gap-3">
         <Icon className={`h-8 w-8 text-primary`} />
@@ -36,11 +35,11 @@ const QuickActionCard: React.FC<QuickActionProps> = ({ title, description, icon:
   </Card>
 );
 
-const SecondaryActionListItem: React.FC<Omit<QuickActionProps, 'isPrimary'>> = ({ title, description, icon: Icon, href }) => (
+const SecondaryActionListItem: React.FC<QuickActionProps> = ({ title, description, icon: Icon, href }) => (
   <li>
     <Link href={href} className="block p-4 border rounded-lg hover:bg-muted/5 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-ring">
       <div className="flex items-center gap-4">
-        <Icon className="h-7 w-7 text-muted-foreground flex-shrink-0" /> {/* Changed text-primary to text-muted-foreground */}
+        <Icon className="h-7 w-7 text-muted-foreground flex-shrink-0" />
         <div className="flex-1">
           <h3 className="font-semibold text-md">{title}</h3>
           <p className="text-sm text-muted-foreground">{description}</p>
@@ -57,26 +56,23 @@ export default function HomePage() {
       title: "New Table Order",
       description: "Start an order for customers dining in. Assign to a table.",
       icon: LayoutGrid,
-      href: "/dashboard/orders?type=Dine-in", 
-      isPrimary: true,
+      href: "/dashboard/orders?type=Dine-in",
     },
     {
       title: "New Takeout Order",
       description: "Create an order for customers to pick up.",
       icon: ShoppingBag,
-      href: "/dashboard/orders?type=Takeout", 
-      isPrimary: true,
+      href: "/dashboard/orders?type=Takeout",
     },
     {
       title: "New Delivery Order",
       description: "Prepare an order for delivery service.",
       icon: Truck,
-      href: "/dashboard/orders?type=Delivery", 
-      isPrimary: true,
+      href: "/dashboard/orders?type=Delivery",
     },
   ];
 
-  const secondaryActions: Omit<QuickActionProps, 'isPrimary'>[] = [
+  const secondaryActions: QuickActionProps[] = [
      {
       title: "View Active Orders",
       description: "Monitor all ongoing orders and their statuses.",
@@ -86,8 +82,8 @@ export default function HomePage() {
     {
       title: "Kitchen Display",
       description: "Access the kitchen order display (Mock).",
-      icon: Eye, 
-      href: "#", 
+      icon: Eye,
+      href: "#",
     },
     {
       title: "Settings",
@@ -128,4 +124,3 @@ export default function HomePage() {
     </div>
   );
 }
-
