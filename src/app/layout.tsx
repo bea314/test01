@@ -17,7 +17,7 @@ export default function RootLayout({
 }>) {
   
   return (
-    <html lang="en" className="dark"> {/* Apply dark class for ShadCN theme consistency if it relies on it */}
+    <html lang="en"> {/* Removed className="dark" */}
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
