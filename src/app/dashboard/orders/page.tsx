@@ -114,10 +114,81 @@ function OrdersPageContent() {
     return 'new_order';
   }, [checkoutOrderIdParam, editActiveOrderIdParam]);
 
+  const [tipAmount, setTipAmount] = useState(0);
+
+  const currentOrderItemsForCheckoutDisplay = useMemo(() => {
+    if (pageMode === 'checkout_existing' && loadedOrderForCheckout) {
+        return loadedOrderForCheckout.items
+            .filter(i => i.status !== 'cancelled')
+            .map(item => ({ ...item, isCourtesy: itemCourtesiesCheckout[item.id] || false }));
+    }
+    return [];
+  }, [pageMode, loadedOrderForCheckout, itemCourtesiesCheckout]);
+
+  const orderTotalsForCheckout = useMemo(() => {
+    let orderForCalc: Order | Partial<Order> & { items: OrderItem[] | (Omit<OrderItem, 'id' | 'status'> & { menuItemId: string, price: number, name: string })[] } = { items: [] };
+
+    if (pageMode === 'checkout_existing' && loadedOrderForCheckout) {
+        orderForCalc = {
+            ...loadedOrderForCheckout,
+            items: currentOrderItemsForCheckoutDisplay, 
+            isCourtesy: isCourtesyCheckout,
+            selectedDiscountId: selectedDiscountId,
+            appliedCouponCode: appliedCouponCode,
+            manualDiscountAmount: manualDiscountAmountCheckout,
+            tipAmount: 0, 
+        };
+    } else { 
+        orderForCalc = {
+            items: newOrderItems.map(item => ({...item, id: item.tempId, status: 'pending' })), 
+            isCourtesy: false, 
+            tipAmount: 0,
+            manualDiscountAmount: 0,
+        };
+    }
+    return calculateOrderTotals(orderForCalc as Order); 
+  }, [pageMode, loadedOrderForCheckout, currentOrderItemsForCheckoutDisplay, isCourtesyCheckout, selectedDiscountId, appliedCouponCode, manualDiscountAmountCheckout, newOrderItems]);
+  
+  useEffect(() => {
+    if (currentStep === 'checkout' && loadedOrderForCheckout && orderTotalsForCheckout) {
+      if (isCourtesyCheckout) { 
+        setTipAmount(0);
+        return;
+      }
+      let calculatedTip = 0;
+      const baseForTip = orderTotalsForCheckout.subtotal - (orderTotalsForCheckout.discountAmount || 0);
+
+      switch (tipMode) {
+        case 'percentage':
+          calculatedTip = baseForTip * (customTipPercentage / 100);
+          break;
+        case 'manual':
+          calculatedTip = manualTipAmount < 0 ? 0 : manualTipAmount;
+          break;
+        case 'default':
+        default:
+          calculatedTip = baseForTip * (DEFAULT_TIP_PERCENTAGE / 100);
+          break;
+      }
+      setTipAmount(calculatedTip);
+    } else {
+      setTipAmount(0);
+    }
+  }, [tipMode, orderTotalsForCheckout, customTipPercentage, manualTipAmount, isCourtesyCheckout, currentStep, loadedOrderForCheckout]);
+
+  const finalTotalAmountForCheckout = useMemo(() => {
+    if (currentStep === 'checkout' && orderTotalsForCheckout) {
+      if (isCourtesyCheckout) return 0;
+      return orderTotalsForCheckout.subtotal - (orderTotalsForCheckout.discountAmount || 0) + orderTotalsForCheckout.taxAmount + tipAmount;
+    }
+    return orderTotalsForCheckout?.totalAmount || 0; 
+  }, [currentStep, orderTotalsForCheckout, tipAmount, isCourtesyCheckout]);
+
   const isOrderFullyPaid = useMemo(() => {
     if (!loadedOrderForCheckout || isCourtesyCheckout || isOnHoldCheckout) return false;
     const totalPaidInSplits = uiSplits.filter(s => s.isPaid).reduce((sum, s) => sum + parseFloat(s.amountToPay || '0'), 0);
-    return totalPaidInSplits >= finalTotalAmountForCheckout - 0.001; // Allow for small float inaccuracies
+    const numericFinalTotal = typeof finalTotalAmountForCheckout === 'number' ? finalTotalAmountForCheckout : 0;
+    return totalPaidInSplits >= numericFinalTotal - 0.001; // Allow for small float inaccuracies
   }, [loadedOrderForCheckout, uiSplits, finalTotalAmountForCheckout, isCourtesyCheckout, isOnHoldCheckout]);
 
 
@@ -338,76 +409,6 @@ function OrdersPageContent() {
     setCurrentObservationText('');
   };
   
-  const currentOrderItemsForCheckoutDisplay = useMemo(() => {
-    if (pageMode === 'checkout_existing' && loadedOrderForCheckout) {
-        return loadedOrderForCheckout.items
-            .filter(i => i.status !== 'cancelled')
-            .map(item => ({ ...item, isCourtesy: itemCourtesiesCheckout[item.id] || false }));
-    }
-    return [];
-  }, [pageMode, loadedOrderForCheckout, itemCourtesiesCheckout]);
-
-  const orderTotalsForCheckout = useMemo(() => {
-    let orderForCalc: Order | Partial<Order> & { items: OrderItem[] | (Omit<OrderItem, 'id' | 'status'> & { menuItemId: string, price: number, name: string })[] } = { items: [] };
-
-    if (pageMode === 'checkout_existing' && loadedOrderForCheckout) {
-        orderForCalc = {
-            ...loadedOrderForCheckout,
-            items: currentOrderItemsForCheckoutDisplay, 
-            isCourtesy: isCourtesyCheckout,
-            selectedDiscountId: selectedDiscountId,
-            appliedCouponCode: appliedCouponCode,
-            manualDiscountAmount: manualDiscountAmountCheckout,
-            tipAmount: 0, 
-        };
-    } else { 
-        orderForCalc = {
-            items: newOrderItems.map(item => ({...item, id: item.tempId, status: 'pending' })), 
-            isCourtesy: false, 
-            tipAmount: 0,
-            manualDiscountAmount: 0,
-        };
-    }
-    return calculateOrderTotals(orderForCalc as Order); 
-  }, [pageMode, loadedOrderForCheckout, currentOrderItemsForCheckoutDisplay, isCourtesyCheckout, selectedDiscountId, appliedCouponCode, manualDiscountAmountCheckout, newOrderItems]);
-
-  const [tipAmount, setTipAmount] = useState(0);
-
-  useEffect(() => {
-    if (currentStep === 'checkout' && loadedOrderForCheckout && orderTotalsForCheckout) {
-      if (isCourtesyCheckout) { 
-        setTipAmount(0);
-        return;
-      }
-      let calculatedTip = 0;
-      const baseForTip = orderTotalsForCheckout.subtotal - (orderTotalsForCheckout.discountAmount || 0);
-
-      switch (tipMode) {
-        case 'percentage':
-          calculatedTip = baseForTip * (customTipPercentage / 100);
-          break;
-        case 'manual':
-          calculatedTip = manualTipAmount < 0 ? 0 : manualTipAmount;
-          break;
-        case 'default':
-        default:
-          calculatedTip = baseForTip * (DEFAULT_TIP_PERCENTAGE / 100);
-          break;
-      }
-      setTipAmount(calculatedTip);
-    } else {
-      setTipAmount(0);
-    }
-  }, [tipMode, orderTotalsForCheckout, customTipPercentage, manualTipAmount, isCourtesyCheckout, currentStep, loadedOrderForCheckout]);
-
-  const finalTotalAmountForCheckout = useMemo(() => {
-    if (currentStep === 'checkout' && orderTotalsForCheckout) {
-      if (isCourtesyCheckout) return 0;
-      return orderTotalsForCheckout.subtotal - (orderTotalsForCheckout.discountAmount || 0) + orderTotalsForCheckout.taxAmount + tipAmount;
-    }
-    return orderTotalsForCheckout.totalAmount; 
-  }, [currentStep, orderTotalsForCheckout, tipAmount, isCourtesyCheckout]);
-
 
   const filteredMenuItems = mockMenuItemsAll.filter(item =>
     (item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -521,7 +522,7 @@ function OrdersPageContent() {
         return;
     }
     if (!isCourtesyCheckout && !isOnHoldCheckout) {
-        if (paymentSplitType === 'none' && !overallPaymentMethod) {
+        if (paymentSplitType === 'none' && !overallPaymentMethod && !isOrderFullyPaid) {
             toast({ title: "Payment Method Required", description: "Please select a payment method.", variant: "destructive" });
             return;
         }
@@ -620,7 +621,8 @@ function OrdersPageContent() {
 
         if (isOrderFullyPaid || isCourtesyCheckout || isOnHoldCheckout) {
             // If fully paid, courtesy, or on hold, don't generate new UI splits for payment
-            setItemsToSplitBy({});
+            setItemsToSplitBy({}); // Clear selection for next itemized split
+            setUiSplits(prevSplits => prevSplits.map(s => ({...s, isPaid: true}))); // Ensure all existing are marked paid
             return;
         }
 
@@ -631,7 +633,7 @@ function OrdersPageContent() {
                 const amountPerRemainingSplit = remainingAmountToSplit / numberOfRemainingSplits;
                  for (let i = 0; i < numberOfRemainingSplits; i++) {
                     newUiSplits.push({
-                        id: `split-eq-${newUiSplits.length}`,
+                        id: `split-eq-${newUiSplits.length}-${Date.now()}`,
                         amountDue: amountPerRemainingSplit,
                         amountToPay: amountPerRemainingSplit.toFixed(2),
                         items: [], 
@@ -650,7 +652,6 @@ function OrdersPageContent() {
                 if (selectedDiscountId) {
                     const preset = mockPresetDiscounts.find(d => d.id === selectedDiscountId);
                     if (preset) {
-                        // Logic to determine if these specific items get the discount
                         let discountableSubtotalForItemSplit = 0;
                         if (preset.applicableItemIds && preset.applicableItemIds.length > 0) {
                             discountableSubtotalForItemSplit = itemsSelectedForThisSplit
@@ -662,22 +663,20 @@ function OrdersPageContent() {
                                 .filter((item, index) => preset.applicableCategoryIds!.includes(itemCategories[index] || ''))
                                 .reduce((sum, item) => sum + item.price * item.quantity, 0);
                         } else {
-                             discountableSubtotalForItemSplit = itemsSubtotal; // Discount applies to all items in selection
+                             discountableSubtotalForItemSplit = itemsSubtotal; 
                         }
                         itemsDiscount = discountableSubtotalForItemSplit * (preset.percentage / 100);
                     }
                 } else if (manualDiscountAmountCheckout > 0) {
-                    // Pro-rate manual discount: (this split's subtotal / total subtotal of eligible items) * total manual discount
                     const totalSubtotalOfUncoveredEligibleItems = activeOrderItemsUncovered.reduce((sum, item) => sum + (item.price * item.quantity), 0);
                     if (totalSubtotalOfUncoveredEligibleItems > 0) {
                         itemsDiscount = (itemsSubtotal / totalSubtotalOfUncoveredEligibleItems) * manualDiscountAmountCheckout;
-                        itemsDiscount = Math.min(itemsDiscount, itemsSubtotal); // Cap discount
+                        itemsDiscount = Math.min(itemsDiscount, itemsSubtotal); 
                     }
                 }
 
                 const itemsSubtotalAfterDiscount = itemsSubtotal - itemsDiscount;
                 const itemsTax = itemsSubtotalAfterDiscount * IVA_RATE;
-                // Pro-rate tip for this split: (this split's subtotal after disc / total subtotal after disc for eligible items) * total tip
                 const totalSubtotalAfterDiscountForAllUncovered = orderTotalsForCheckout.subtotal - (orderTotalsForCheckout.discountAmount || 0);
                 let itemsTip = 0;
                 if (totalSubtotalAfterDiscountForAllUncovered > 0) {
@@ -686,9 +685,14 @@ function OrdersPageContent() {
                 
                 const itemsAmountDueWithTaxAndTip = itemsSubtotalAfterDiscount + itemsTax + itemsTip;
                 
-                const existingSplitForTheseItems = newUiSplits.find(s => !s.isPaid && s.items.every((it, idx) => itemsSelectedForThisSplit[idx]?.id === it.id) && s.items.length === itemsSelectedForThisSplit.length);
+                // Check if there's an *unpaid* split already representing these *exact* items
+                const existingUnpaidSplitForTheseItemsIndex = newUiSplits.findIndex(s => 
+                    !s.isPaid && 
+                    s.items.length === itemsSelectedForThisSplit.length &&
+                    s.items.every(it => itemsSelectedForThisSplit.some(selIt => selIt.id === it.id))
+                );
 
-                if (!existingSplitForTheseItems) {
+                if (existingUnpaidSplitForTheseItemsIndex === -1 && itemsSelectedForThisSplit.length > 0) { // Only add if truly new selection and items are selected
                      newUiSplits.push({
                         id: `split-item-${Date.now()}`,
                         amountDue: itemsAmountDueWithTaxAndTip,
@@ -697,19 +701,26 @@ function OrdersPageContent() {
                         isPaid: false,
                         dteType: 'consumidor_final'
                     });
-                } else {
-                     // Potentially update amount if selections changed, this part can be complex
+                } else if (existingUnpaidSplitForTheseItemsIndex > -1) {
+                    // Update existing unpaid split if items change (e.g., amount recalculates)
+                    newUiSplits[existingUnpaidSplitForTheseItemsIndex].amountDue = itemsAmountDueWithTaxAndTip;
+                    newUiSplits[existingUnpaidSplitForTheseItemsIndex].amountToPay = itemsAmountDueWithTaxAndTip.toFixed(2);
+                    newUiSplits[existingUnpaidSplitForTheseItemsIndex].items = itemsSelectedForThisSplit;
                 }
+            } else if (newUiSplits.some(s => !s.isPaid && s.items.length > 0 && Object.keys(itemsToSplitBy).length === 0)) {
+                // If no items are selected for split by item, and there's an existing unpaid itemized split, remove it
+                newUiSplits = newUiSplits.filter(s => s.isPaid || s.items.length === 0 || Object.keys(itemsToSplitBy).some(key => itemsToSplitBy[key]));
             }
+
         } else { // 'none'
-             if (newUiSplits.filter(s => !s.isPaid).length === 0 && !isOrderFullyPaid) { // Only add if no unpaid splits exist
+             if (newUiSplits.filter(s => !s.isPaid).length === 0 && !isOrderFullyPaid) { 
                 newUiSplits.push({
                     id: 'split-none-full',
                     amountDue: totalOrderAmount,
                     amountToPay: totalOrderAmount.toFixed(2),
                     items: currentOrderItemsForCheckoutDisplay,
                     isPaid: false,
-                    dteType: overallDteType, // Use overall DTE for non-split
+                    dteType: overallDteType, 
                     dteInvoiceInfo: overallDteType === 'credito_fiscal' ? {nit: overallDteNit, nrc: overallDteNrc, customerName: overallDteCustomerName} : undefined,
                 });
             }
@@ -719,7 +730,7 @@ function OrdersPageContent() {
         setUiSplits([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paymentSplitType, paymentSplitWays, itemsToSplitBy, currentStep, loadedOrderForCheckout, currentOrderItemsForCheckoutDisplay, finalTotalAmountForCheckout, tipAmount, coveredItemIdsForSplitting, isOrderFullyPaid, isCourtesyCheckout, isOnHoldCheckout]);
+  }, [paymentSplitType, paymentSplitWays, itemsToSplitBy, currentStep, loadedOrderForCheckout, currentOrderItemsForCheckoutDisplay, finalTotalAmountForCheckout, tipAmount, coveredItemIdsForSplitting, isOrderFullyPaid, isCourtesyCheckout, isOnHoldCheckout, orderTotalsForCheckout, overallDteType, overallDteNit, overallDteNrc, overallDteCustomerName]);
 
 
   const handlePaySplit = (splitId: string) => {
@@ -734,29 +745,27 @@ function OrdersPageContent() {
                 toast({ title: "Invalid Amount", description: "Enter a valid amount to pay for this share.", variant: "destructive" });
                 return split;
             }
-             // Allow slight overpayment for tips or rounding, but not significantly more than due.
-            if (amountToPayNum > split.amountDue + (split.amountDue * 0.1) + 5) { // e.g. allow up to 10% + $5 over for tip/rounding flexibility
-                toast({ title: "Overpayment Too Large", description: `Payment significantly exceeds due amount ($${split.amountDue.toFixed(2)}). Adjust or check total.`, variant: "destructive" });
-                return split;
+            // Allow up to 1 cent overpayment for rounding, or if more, assume it's intentional (e.g. for exact cash given)
+            if (amountToPayNum > split.amountDue + 0.01 && Math.abs(amountToPayNum - split.amountDue) > 0.01 ) {
+                 if (amountToPayNum > split.amountDue + (split.amountDue * 0.2) + 10) { // More generous overpayment cap
+                    toast({ title: "Overpayment Too Large", description: `Payment ($${amountToPayNum.toFixed(2)}) significantly exceeds due amount ($${split.amountDue.toFixed(2)}). Adjust or check total.`, variant: "destructive" });
+                    return split;
+                }
             }
-            if (amountToPayNum < split.amountDue && paymentSplitType !== 'by_item' && paymentSplitType !== 'equal') {
-                // For 'none' split, must be full amount unless we add partial payment for 'none'
-                // For 'equal' and 'by_item', it's fine if amountToPay is less than amountDue IF they intend to pay rest later (not supported yet)
-                // For now, let's assume they must pay at least the due amount for equal/by_item splits to mark as paid
-            }
+            
             if (split.dteType === 'credito_fiscal' && (!split.dteInvoiceInfo?.nit || !split.dteInvoiceInfo?.nrc || !split.dteInvoiceInfo?.customerName)) {
                  toast({ title: "DTE Info Missing", description: "Please fill NIT, NRC, and Customer Name for Crédito Fiscal.", variant: "destructive" });
                 return split;
             }
 
-            toast({ title: "Share Paid (Mock)", description: `Share ${splitId} paid $${amountToPayNum.toFixed(2)} via ${split.paymentMethod}.` });
+            toast({ title: "Share Paid (Mock)", description: `Share ${splitId.slice(0,10)} paid $${amountToPayNum.toFixed(2)} via ${split.paymentMethod}.` });
             
             if (paymentSplitType === 'by_item') {
                 setCoveredItemIdsForSplitting(prev => [...new Set([...prev, ...split.items.map(i => i.id)])]);
                 setItemsToSplitBy({}); // Reset selection for next itemized split
             }
 
-            return { ...split, isPaid: true, amountToPay: amountToPayNum.toFixed(2) }; // Update amountToPay to what was actually entered/paid
+            return { ...split, isPaid: true, amountToPay: amountToPayNum.toFixed(2) }; 
         }
         return split;
     }));
@@ -1172,12 +1181,12 @@ function OrdersPageContent() {
                                         disabled={isOnHoldCheckout || isOrderFullyPaid}
                                       />
                                     )}
-                                    {paymentSplitType === 'by_item' && !coveredItemIdsForSplitting.includes(item.id) && (
+                                    {paymentSplitType === 'by_item' && !coveredItemIdsForSplitting.includes(item.id) && !item.isCourtesy && (
                                       <Checkbox
                                         checked={!!itemsToSplitBy[item.id]}
                                         onCheckedChange={(checked) => setItemsToSplitBy(prev => ({...prev, [item.id]: !!checked}))}
                                         aria-label={`Select ${item.name} for separate payment`}
-                                        disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid || item.isCourtesy}
+                                        disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}
                                       />
                                     )}
                                      {paymentSplitType === 'by_item' && coveredItemIdsForSplitting.includes(item.id) && (
@@ -1200,7 +1209,7 @@ function OrdersPageContent() {
                 <Separator />
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-                    <Card className="p-4">
+                    <Card className="p-4 border shadow-sm">
                         <CardHeader className="p-0 pb-3">
                              <CardTitle className="font-headline text-lg flex items-center"><TicketPercent className="mr-2 h-5 w-5 text-primary"/>Discount Options</CardTitle>
                         </CardHeader>
@@ -1252,7 +1261,7 @@ function OrdersPageContent() {
                         </CardContent>
                     </Card>
 
-                    <Card className="p-4">
+                    <Card className="p-4 border shadow-sm">
                         <CardHeader className="p-0 pb-3">
                             <CardTitle className="font-headline text-lg flex items-center"><DollarSignIcon className="mr-2 h-5 w-5 text-primary"/>Tip Options</CardTitle>
                         </CardHeader>
@@ -1269,14 +1278,14 @@ function OrdersPageContent() {
                                 </div>
                                 <div className="flex items-center space-x-3 h-9">
                                     <RadioGroupItem value="percentage" id="tipPercentage" />
-                                    <Label htmlFor="tipPercentage" className="cursor-pointer">Custom %</Label>
-                                    <Input type="number" value={customTipPercentage} onChange={e => setCustomTipPercentage(Number(e.target.value))} className={cn("w-20 h-8 text-sm text-center", tipMode !== 'percentage' && "hidden")} aria-label="Custom tip percentage" disabled={tipMode !== 'percentage'} />
+                                    <Label htmlFor="tipPercentage" className="cursor-pointer w-20">Custom %</Label>
+                                    <Input type="number" value={customTipPercentage} onChange={e => setCustomTipPercentage(Number(e.target.value))} className={cn("w-20 h-8 text-sm text-center", tipMode !== 'percentage' ? "opacity-0 pointer-events-none" : "opacity-100")} aria-label="Custom tip percentage" disabled={tipMode !== 'percentage'} />
                                     {tipMode === 'percentage' && <span className="text-sm">%</span>}
                                 </div>
                                 <div className="flex items-center space-x-3 h-9">
                                     <RadioGroupItem value="manual" id="tipManual" />
-                                    <Label htmlFor="tipManual" className="cursor-pointer">Manual $</Label>
-                                    <Input type="number" value={manualTipAmount} onChange={e => setManualTipAmount(Number(e.target.value))} className={cn("w-24 h-8 text-sm text-center", tipMode !== 'manual' && "hidden")} aria-label="Manual tip amount" disabled={tipMode !== 'manual'}/>
+                                    <Label htmlFor="tipManual" className="cursor-pointer w-20">Manual $</Label>
+                                    <Input type="number" value={manualTipAmount} onChange={e => setManualTipAmount(Number(e.target.value))} className={cn("w-24 h-8 text-sm text-center", tipMode !== 'manual' ? "opacity-0 pointer-events-none" : "opacity-100")} aria-label="Manual tip amount" disabled={tipMode !== 'manual'}/>
                                     {tipMode === 'manual' && <span className="text-sm">$</span>}
                                 </div>
                             </RadioGroup>
@@ -1316,7 +1325,7 @@ function OrdersPageContent() {
                             <Input id="splitWays" type="number" value={paymentSplitWays} onChange={e => setPaymentSplitWays(Math.max(2, parseInt(e.target.value)))} min="2" className="w-20 h-8" disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}/>
                         </div>
                     )}
-                    {paymentSplitType === 'by_item' && (
+                    {paymentSplitType === 'by_item' && !isOrderFullyPaid && (
                         <p className="text-xs text-muted-foreground">Select items in the summary above to include them in the current itemized payment section below. Paid items cannot be re-selected.</p>
                     )}
 
@@ -1405,7 +1414,7 @@ function OrdersPageContent() {
                             </CardContent>
                         </Card>
                     ))}
-                     {paymentSplitType === 'none' && ( // DTE for overall order if not splitting
+                     {paymentSplitType === 'none' && !isOrderFullyPaid && ( 
                         <Card className="p-4 bg-muted/30">
                             <CardHeader className="p-0 pb-3">
                                 <CardTitle className="text-md flex items-center"><FileText className="mr-2 h-4 w-4 text-primary"/>DTE Invoice (El Salvador)</CardTitle>
