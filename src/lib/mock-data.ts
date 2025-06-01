@@ -1,5 +1,5 @@
 
-import type { MenuItem, MenuItemCategory, User, UserRole } from '@/lib/types';
+import type { MenuItem, MenuItemCategory, User, UserRole, RestaurantTable } from '@/lib/types';
 
 export const mockCategories: MenuItemCategory[] = [
   { id: "cat1", name: "Appetizers" },
@@ -18,6 +18,7 @@ export const initialMenuItems: MenuItem[] = [
     availability: "available", 
     number: "A01", 
     imageUrl: "https://placehold.co/150x100.png?text=Bruschetta",
+    dataAiHint: "italian bread",
     allergiesNotes: "Contains gluten. Vegan option available upon request."
   },
   { 
@@ -29,6 +30,7 @@ export const initialMenuItems: MenuItem[] = [
     availability: "available", 
     number: "M05", 
     imageUrl: "https://placehold.co/150x100.png?text=Carbonara",
+    dataAiHint: "pasta dish",
     allergiesNotes: "Contains gluten, dairy, and eggs."
   },
   { 
@@ -40,6 +42,7 @@ export const initialMenuItems: MenuItem[] = [
     availability: "unavailable", 
     number: "D02", 
     imageUrl: "https://placehold.co/150x100.png?text=Tiramisu",
+    dataAiHint: "italian dessert",
     allergiesNotes: "Contains dairy, eggs, gluten, and coffee."
   },
   {
@@ -51,6 +54,7 @@ export const initialMenuItems: MenuItem[] = [
     number: 'A02',
     availability: 'available',
     imageUrl: 'https://placehold.co/150x100.png?text=Spring+Rolls',
+    dataAiHint: "asian appetizer",
     allergiesNotes: 'Contains gluten. Vegan.'
   },
   {
@@ -62,6 +66,7 @@ export const initialMenuItems: MenuItem[] = [
     number: 'M01',
     availability: 'available',
     imageUrl: 'https://placehold.co/150x100.png?text=Salmon',
+    dataAiHint: "fish dish",
     allergiesNotes: 'Contains fish. Gluten-free.'
   },
   {
@@ -73,6 +78,7 @@ export const initialMenuItems: MenuItem[] = [
     number: 'D01',
     availability: 'available',
     imageUrl: 'https://placehold.co/150x100.png?text=Lava+Cake',
+    dataAiHint: "chocolate dessert",
     allergiesNotes: 'Contains dairy, eggs, gluten.'
   },
   {
@@ -83,7 +89,8 @@ export const initialMenuItems: MenuItem[] = [
     category: mockCategories[3],
     number: 'R01',
     availability: 'available',
-    imageUrl: 'https://placehold.co/150x100.png?text=Iced+Tea'
+    imageUrl: 'https://placehold.co/150x100.png?text=Iced+Tea',
+    dataAiHint: "cold beverage"
   }
 ];
 
@@ -94,4 +101,12 @@ export const initialStaff: User[] = [
   { id: "staff2", name: "Bob The Builder", email: "bob@tabletop.ai", role: "waiter" },
   { id: "staff3", name: "Charlie Chaplin", email: "charlie@tabletop.ai", role: "cashier" },
   { id: "staff4", name: "Diana Prince", email: "diana@tabletop.ai", role: "waiter" },
+];
+
+export const initialTables: RestaurantTable[] = [
+  { id: "t1", name: "Main Table 1", status: "available", capacity: 4 },
+  { id: "t2", name: "Window Seat 2", status: "occupied", capacity: 2, currentOrderId: "orderXYZ" },
+  { id: "t3", name: "Patio Table A", status: "reserved", capacity: 6 },
+  { id: "t4", name: "Corner Booth", status: "available", capacity: 5 },
+  { id: "t5", name: "Bar Seat 5", status: "available", capacity: 1 },
 ];

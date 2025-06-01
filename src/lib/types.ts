@@ -32,14 +32,14 @@ export interface OrderItem {
   quantity: number;
   price: number;
   modifiers: OrderItemModifier[];
-  specialInstructions?: string; // Kept for general instructions
-  observations?: string; // For specific item observations/notes
+  specialInstructions?: string; 
+  observations?: string; 
   status: 'pending' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
 }
 
 export interface Order {
   id: string;
-  tableId?: string; // For Dine-in
+  tableId?: string; 
   waiterId: string;
   orderType: OrderType;
   items: OrderItem[];
@@ -50,10 +50,10 @@ export interface Order {
   discountAmount: number;
   totalAmount: number;
   paymentMethod?: 'cash' | 'credit_card' | 'digital_wallet';
-  dteInvoiceInfo?: DTEInvoiceInfo; // For El Salvador DTE
+  dteInvoiceInfo?: DTEInvoiceInfo; 
   dteType?: 'consumidor_final' | 'credito_fiscal';
-  createdAt: string; // ISO date string
-  updatedAt: string; // ISO date string
+  createdAt: string; 
+  updatedAt: string; 
 }
 
 export interface DTEInvoiceInfo {
@@ -75,9 +75,10 @@ export interface MenuItem {
   price: number;
   category: MenuItemCategory;
   imageUrl?: string;
+  dataAiHint?: string;
   availability: 'available' | 'unavailable';
-  number?: string; // For searching by number
-  allergiesNotes?: string; // For allergy information
+  number?: string; 
+  allergiesNotes?: string; 
 }
 
 export interface Waiter {
@@ -87,15 +88,15 @@ export interface Waiter {
 
 // For settings page - financial documents
 export interface BusinessFinancialInfo {
-  businessName: string; // Nombre Comercial
-  legalName: string; // Nombre o Razón Social
-  nit: string; // NIT
-  nrc: string; // NRC
-  taxpayerType: string; // Tipo de Contribuyente (e.g., Persona Natural, Sociedad)
-  economicActivity: string; // Actividad Económica (Giro)
+  businessName: string; 
+  legalName: string; 
+  nit: string;
+  nrc: string;
+  taxpayerType: string; 
+  economicActivity: string; 
   email: string;
   phone: string;
-  address?: string; // Might be useful
+  address?: string; 
   municipality?: string;
   department?: string;
 }
