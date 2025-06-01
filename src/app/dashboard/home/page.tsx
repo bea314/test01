@@ -14,18 +14,18 @@ interface QuickActionProps {
   isPrimary?: boolean;
 }
 
-const QuickActionCard: React.FC<QuickActionProps> = ({ title, description, icon: Icon, href, isPrimary }) => (
-  <Card className={`shadow-lg hover:shadow-xl transition-shadow flex flex-col ${isPrimary ? 'bg-primary/5 hover:bg-primary/10 border-primary/30' : 'hover:border-muted-foreground/20'}`}>
+const QuickActionCard: React.FC<QuickActionProps> = ({ title, description, icon: Icon, href }) => (
+  <Card className={`shadow-lg hover:shadow-xl transition-shadow flex flex-col bg-primary/5 hover:bg-primary/10 border-primary/30 aspect-square`}>
     <CardHeader className="pb-3">
       <div className="flex items-center gap-3">
-        <Icon className={`h-8 w-8 ${isPrimary ? 'text-primary' : 'text-muted-foreground'}`} />
+        <Icon className={`h-8 w-8 text-primary`} />
         <CardTitle className="font-headline text-xl">{title}</CardTitle>
       </div>
     </CardHeader>
     <CardContent className="flex flex-col flex-grow p-4 pt-0">
-      <p className="text-sm text-muted-foreground mb-4 h-10 flex-shrink-0">{description}</p>
+      <p className="text-sm text-muted-foreground mb-4">{description}</p>
       <div className="mt-auto">
-        <Button asChild variant={isPrimary ? "default" : "outline"} className="w-full">
+        <Button asChild variant={"default"} className="w-full">
           <Link href={href}>
             {title.startsWith("New") || title.startsWith("Start") ? "Start Now" : "Go to " + title}
             <ArrowRight className="ml-2 h-4 w-4" />
@@ -57,21 +57,21 @@ export default function HomePage() {
       title: "New Table Order",
       description: "Start an order for customers dining in. Assign to a table.",
       icon: LayoutGrid,
-      href: "/dashboard", 
+      href: "/dashboard/orders?type=Dine-in", 
       isPrimary: true,
     },
     {
       title: "New Takeout Order",
       description: "Create an order for customers to pick up.",
       icon: ShoppingBag,
-      href: "/dashboard/orders", 
+      href: "/dashboard/orders?type=Takeout", 
       isPrimary: true,
     },
     {
       title: "New Delivery Order",
       description: "Prepare an order for delivery service.",
       icon: Truck,
-      href: "/dashboard/orders", 
+      href: "/dashboard/orders?type=Delivery", 
       isPrimary: true,
     },
   ];
