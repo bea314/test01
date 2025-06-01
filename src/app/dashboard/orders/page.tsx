@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard, Users, Percent, WalletCards, CircleDollarSign, EyeOff, StickyNote, Hash, UserCheck, Send, Utensils, PackagePlus, DivideSquare, TicketPercent, DollarSignIcon, Loader2, FileText } from "lucide-react";
+import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard, Users, Percent, WalletCards, CircleDollarSign, EyeOff, StickyNote, Hash, UserCheck, Send, Utensils, PackagePlus, DivideSquare, TicketPercent, DollarSignIcon, Loader2, FileText, CheckSquare, MinusCircle } from "lucide-react";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import type { OrderItem, MenuItem as MenuItemType, OrderType, Waiter, Order, AllergyTag, PaymentSplitType, DiscountPreset, RestaurantTable, MenuItemCategory, ProcessedPaymentSplit, DTEInvoiceInfo } from '@/lib/types';
@@ -39,7 +39,9 @@ import { useToast } from '@/hooks/use-toast';
 
 type MenuView = 'grid' | 'list';
 type OrderStep = 'building' | 'checkout';
-type TipMode = 'default' | 'percentage' | 'manual';
+
+type CheckoutSubStep = 'summary_and_courtesy' | 'discounts_and_tip' | 'payment_splitting' | 'final_review_and_pay';
+
 
 // Define a type for a single split in the UI
 interface UISplit {
@@ -65,9 +67,9 @@ function OrdersPageContent() {
   const { toast } = useToast();
 
   const [currentStep, setCurrentStep] = useState<OrderStep>('building');
-  // For new orders or adding to active order
+  const [currentCheckoutSubStep, setCurrentCheckoutSubStep] = useState<CheckoutSubStep>('summary_and_courtesy');
+
   const [newOrderItems, setNewOrderItems] = useState<(Omit<OrderItem, 'id' | 'status' | 'menuItemId'> & { tempId: string; menuItemId: string; price: number; name: string; observations?: string; assignedGuest?: string; quantity: number; isCourtesy?: boolean })[]>([]);
-  // For displaying existing items when adding to active order, or items during checkout
   const [existingOrderItems, setExistingOrderItems] = useState<OrderItem[]>([]);
   const [coveredItemIdsForSplitting, setCoveredItemIdsForSplitting] = useState<string[]>([]);
 
@@ -88,16 +90,16 @@ function OrdersPageContent() {
   const [selectedDiscountId, setSelectedDiscountId] = useState<string | undefined>(undefined);
   const [manualDiscountAmountCheckout, setManualDiscountAmountCheckout] = useState<number>(0);
   const [appliedCouponCode, setAppliedCouponCode] = useState('');
-  const [overallPaymentMethod, setOverallPaymentMethod] = useState<string | undefined>(undefined); // For non-split payments
-  const [overallDteType, setOverallDteType] = useState<'consumidor_final' | 'credito_fiscal'>('consumidor_final'); // For non-split
-  const [overallDteNit, setOverallDteNit] = useState(''); // For non-split
-  const [overallDteNrc, setOverallDteNrc] = useState(''); // For non-split
-  const [overallDteCustomerName, setOverallDteCustomerName] = useState(''); // For non-split
+  const [overallPaymentMethod, setOverallPaymentMethod] = useState<string | undefined>(undefined); 
+  const [overallDteType, setOverallDteType] = useState<'consumidor_final' | 'credito_fiscal'>('consumidor_final'); 
+  const [overallDteNit, setOverallDteNit] = useState(''); 
+  const [overallDteNrc, setOverallDteNrc] = useState(''); 
+  const [overallDteCustomerName, setOverallDteCustomerName] = useState(''); 
   
   const [paymentSplitType, setPaymentSplitType] = useState<PaymentSplitType>('none');
   const [paymentSplitWays, setPaymentSplitWays] = useState<number>(2);
-  const [itemsToSplitBy, setItemsToSplitBy] = useState<Record<string, boolean>>({}); // For 'by_item' selection, used for building the *next* itemized split
-  const [uiSplits, setUiSplits] = useState<UISplit[]>([]); // For managing UI representation of splits
+  const [itemsToSplitBy, setItemsToSplitBy] = useState<Record<string, boolean>>({}); 
+  const [uiSplits, setUiSplits] = useState<UISplit[]>([]); 
 
   const [isCourtesyCheckout, setIsCourtesyCheckout] = useState(false);
   const [isOnHoldCheckout, setIsOnHoldCheckout] = useState(false);
@@ -151,18 +153,17 @@ function OrdersPageContent() {
   
   const finalTotalAmountForCheckout = useMemo(() => {
     if (currentStep === 'checkout' && orderTotalsForCheckout) {
-      if (isCourtesyCheckout) return 0; // If entire order is courtesy, total is 0
-      // Subtotal (after item courtesies) - total discount (preset + manual) + tax + tip
+      if (isCourtesyCheckout) return 0; 
       return orderTotalsForCheckout.subtotal - (orderTotalsForCheckout.discountAmount || 0) + orderTotalsForCheckout.taxAmount + tipAmount;
     }
     return orderTotalsForCheckout?.totalAmount || 0; 
   }, [currentStep, orderTotalsForCheckout, tipAmount, isCourtesyCheckout]);
 
   const isOrderFullyPaid = useMemo(() => {
-    if (!loadedOrderForCheckout || isCourtesyCheckout || isOnHoldCheckout) return false; // Courtesy/On Hold means payment isn't the primary goal
+    if (!loadedOrderForCheckout || isCourtesyCheckout || isOnHoldCheckout) return false; 
     const totalPaidInSplits = uiSplits.filter(s => s.isPaid).reduce((sum, s) => sum + parseFloat(s.amountToPay || '0'), 0);
     const numericFinalTotal = typeof finalTotalAmountForCheckout === 'number' ? finalTotalAmountForCheckout : 0;
-    return totalPaidInSplits >= numericFinalTotal - 0.001; // Allow for small float inaccuracies
+    return totalPaidInSplits >= numericFinalTotal - 0.001; 
   }, [loadedOrderForCheckout, uiSplits, finalTotalAmountForCheckout, isCourtesyCheckout, isOnHoldCheckout]);
 
 
@@ -198,6 +199,8 @@ function OrdersPageContent() {
     const typeParam = searchParams.get('type') as OrderType | null;
     const tableIdParam = searchParams.get('tableId') as string | null;
     setCoveredItemIdsForSplitting([]); 
+    setCurrentCheckoutSubStep('summary_and_courtesy');
+
 
     if (pageMode === 'checkout_existing' && checkoutOrderIdParam) {
         const orderToCheckout = mockActiveOrders.find(o => o.id === checkoutOrderIdParam);
@@ -263,7 +266,7 @@ function OrdersPageContent() {
     } else if (pageMode === 'add_to_active' && editActiveOrderIdParam) {
         const orderToEdit = mockActiveOrders.find(o => o.id === editActiveOrderIdParam);
         if (orderToEdit) {
-            setLoadedOrderForCheckout(null); // Not checking out, just adding items
+            setLoadedOrderForCheckout(null); 
             setExistingOrderItems([...orderToEdit.items]); 
             setOrderType(orderToEdit.orderType); 
             setSelectedTableId(orderToEdit.tableId);
@@ -324,6 +327,7 @@ function OrdersPageContent() {
     setItemCourtesiesCheckout({});
     setIsOnHoldCheckout(false);
     setDisableReceiptPrintCheckout(false);
+    setCurrentCheckoutSubStep('summary_and_courtesy');
   }
 
   const resetOrderFormFull = () => {
@@ -339,6 +343,7 @@ function OrdersPageContent() {
         setNumberOfGuests(undefined);
     }
     setCurrentStep('building');
+    setCurrentCheckoutSubStep('summary_and_courtesy');
     const hasInitialParams = currentOrderTypeParam || currentTableIdParam || checkoutOrderIdParam || editActiveOrderIdParam;
     if (!hasInitialParams) {
       router.replace('/dashboard/orders');
@@ -498,12 +503,17 @@ function OrdersPageContent() {
     const foundDiscount = mockPresetDiscounts.find(d => d.couponCode?.toLowerCase() === appliedCouponCode.toLowerCase());
     if (foundDiscount) {
         setSelectedDiscountId(foundDiscount.id);
-        // setManualDiscountAmountCheckout(0); // Keep manual discount if user wants both
         toast({ title: "Coupon Applied", description: `Discount "${foundDiscount.name}" applied.` });
     } else {
-        // setSelectedDiscountId(undefined); // Don't clear if manual discount is also there
         toast({ title: "Invalid Coupon", description: "The entered coupon code is not valid.", variant: "destructive" });
     }
+  };
+
+  const handleRemoveAllDiscounts = () => {
+    setSelectedDiscountId(undefined);
+    setAppliedCouponCode('');
+    setManualDiscountAmountCheckout(0);
+    toast({ title: "Discounts Cleared", description: "All applied discounts have been removed." });
   };
 
   const handleToggleItemCourtesyCheckout = (itemId: string) => {
@@ -517,7 +527,7 @@ function OrdersPageContent() {
     }
     if (!isCourtesyCheckout && !isOnHoldCheckout) {
         if (paymentSplitType === 'none' && !overallPaymentMethod && !isOrderFullyPaid) {
-            toast({ title: "Payment Method Required", description: "Please select a payment method.", variant: "destructive" });
+            toast({ title: "Payment Method Required", description: "Please select a payment method for full payment.", variant: "destructive" });
             return;
         }
         if (paymentSplitType !== 'none' && uiSplits.some(split => !split.isPaid)) {
@@ -532,7 +542,7 @@ function OrdersPageContent() {
 
 
     if (paymentSplitType === 'none' && overallDteType === 'credito_fiscal' && (!overallDteNit || !overallDteNrc || !overallDteCustomerName)) {
-        toast({ title: "DTE Information Incomplete", description: "Please fill all required fields for Crédito Fiscal.", variant: "destructive" });
+        toast({ title: "DTE Information Incomplete", description: "Please fill all required fields for Crédito Fiscal (full payment).", variant: "destructive" });
         return;
     }
      if (paymentSplitType !== 'none' && uiSplits.some(s => s.isPaid && s.dteType === 'credito_fiscal' && (!s.dteInvoiceInfo?.nit || !s.dteInvoiceInfo?.nrc || !s.dteInvoiceInfo?.customerName))) {
@@ -636,37 +646,41 @@ function OrdersPageContent() {
                 }
             }
         } else if (paymentSplitType === 'by_item') {
-            const itemsSelectedForThisSplit = activeOrderItemsUncovered.filter(item => itemsToSplitBy[item.id]);
+            const itemsSelectedForThisSplitCandidates = activeOrderItemsUncovered.filter(item => itemsToSplitBy[item.id]);
             
-            if (itemsSelectedForThisSplit.length > 0) {
-                // Calculate subtotal of selected items for THIS SPLIT, considering item courtesies
-                let itemsSubtotalThisSplit = itemsSelectedForThisSplit.reduce((sum, item) => sum + (item.isCourtesy ? 0 : item.price * item.quantity), 0);
+            if (itemsSelectedForThisSplitCandidates.length > 0) {
+                let itemsSubtotalThisSplit = itemsSelectedForThisSplitCandidates.reduce((sum, item) => sum + (item.isCourtesy ? 0 : item.price * item.quantity), 0);
                 
-                // Calculate proportional discount for THIS SPLIT
                 let itemsDiscountThisSplit = 0;
-                const totalSubtotalOfAllUncoveredItems = activeOrderItemsUncovered.reduce((sum, item) => sum + (item.isCourtesy ? 0 : item.price * item.quantity), 0);
+                const totalSubtotalOfAllUncoveredNonCourtesyItems = activeOrderItemsUncovered.filter(item => !item.isCourtesy).reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-                if (totalSubtotalOfAllUncoveredItems > 0 && orderTotalsForCheckout.discountAmount > 0) {
-                    itemsDiscountThisSplit = (itemsSubtotalThisSplit / totalSubtotalOfAllUncoveredItems) * orderTotalsForCheckout.discountAmount;
+                if (totalSubtotalOfAllUncoveredNonCourtesyItems > 0 && orderTotalsForCheckout.discountAmount > 0) {
+                    const discountableAmountOfSelectedItems = itemsSelectedForThisSplitCandidates
+                        .filter(item => !item.isCourtesy)
+                        .reduce((sum, item) => sum + item.price * item.quantity, 0);
+                    
+                    itemsDiscountThisSplit = (discountableAmountOfSelectedItems / totalSubtotalOfAllUncoveredNonCourtesyItems) * orderTotalsForCheckout.discountAmount;
                 }
-                itemsDiscountThisSplit = Math.min(itemsDiscountThisSplit, itemsSubtotalThisSplit); // Ensure discount doesn't exceed subtotal of items in split
+                itemsDiscountThisSplit = Math.min(itemsDiscountThisSplit, itemsSubtotalThisSplit); 
 
                 const itemsSubtotalAfterDiscountThisSplit = itemsSubtotalThisSplit - itemsDiscountThisSplit;
                 const itemsTaxThisSplit = itemsSubtotalAfterDiscountThisSplit * IVA_RATE;
                 
-                // Calculate proportional tip for THIS SPLIT
                 let itemsTipThisSplit = 0;
-                const totalSubtotalAfterAllDiscountsForAllUncovered = orderTotalsForCheckout.subtotal - (orderTotalsForCheckout.discountAmount || 0);
-                if (totalSubtotalAfterAllDiscountsForAllUncovered > 0 && tipAmount > 0) {
-                    itemsTipThisSplit = (itemsSubtotalAfterDiscountThisSplit / totalSubtotalAfterAllDiscountsForAllUncovered) * tipAmount;
+                const totalSubtotalAfterAllDiscountsForAllUncoveredNonCourtesy = activeOrderItemsUncovered
+                    .filter(item => !item.isCourtesy)
+                    .reduce((sum, item) => sum + item.price * item.quantity, 0) - (orderTotalsForCheckout.discountAmount || 0);
+
+                if (totalSubtotalAfterAllDiscountsForAllUncoveredNonCourtesy > 0 && tipAmount > 0) {
+                    itemsTipThisSplit = (itemsSubtotalAfterDiscountThisSplit / totalSubtotalAfterAllDiscountsForAllUncoveredNonCourtesy) * tipAmount;
                 }
                 
                 const itemsAmountDueWithTaxAndTipThisSplit = itemsSubtotalAfterDiscountThisSplit + itemsTaxThisSplit + itemsTipThisSplit;
                 
                 const existingUnpaidSplitForTheseItemsIndex = newUiSplits.findIndex(s => 
                     !s.isPaid && 
-                    s.items.length === itemsSelectedForThisSplit.length &&
-                    s.items.every(it => itemsSelectedForThisSplit.some(selIt => selIt.id === it.id))
+                    s.items.length === itemsSelectedForThisSplitCandidates.length &&
+                    s.items.every(it => itemsSelectedForThisSplitCandidates.some(selIt => selIt.id === it.id))
                 );
 
                 if (existingUnpaidSplitForTheseItemsIndex === -1) {
@@ -674,31 +688,29 @@ function OrdersPageContent() {
                         id: `split-item-${Date.now()}`,
                         amountDue: itemsAmountDueWithTaxAndTipThisSplit,
                         amountToPay: itemsAmountDueWithTaxAndTipThisSplit.toFixed(2),
-                        items: itemsSelectedForThisSplit,
+                        items: itemsSelectedForThisSplitCandidates,
                         isPaid: false,
                         dteType: 'consumidor_final'
                     });
                 } else {
                     newUiSplits[existingUnpaidSplitForTheseItemsIndex].amountDue = itemsAmountDueWithTaxAndTipThisSplit;
                     newUiSplits[existingUnpaidSplitForTheseItemsIndex].amountToPay = itemsAmountDueWithTaxAndTipThisSplit.toFixed(2);
-                    newUiSplits[existingUnpaidSplitForTheseItemsIndex].items = itemsSelectedForThisSplit;
+                    newUiSplits[existingUnpaidSplitForTheseItemsIndex].items = itemsSelectedForThisSplitCandidates;
                 }
             } else if (newUiSplits.some(s => !s.isPaid && s.items.length > 0 && Object.keys(itemsToSplitBy).length === 0)) {
                 newUiSplits = newUiSplits.filter(s => s.isPaid || s.items.length === 0 || Object.keys(itemsToSplitBy).some(key => itemsToSplitBy[key]));
             }
 
-        } else { // 'none'
+        } else { 
              if (newUiSplits.filter(s => !s.isPaid).length === 0 && !isOrderFullyPaid) { 
                 newUiSplits.push({
                     id: 'split-none-full',
                     amountDue: totalOrderAmount,
                     amountToPay: totalOrderAmount.toFixed(2),
-                    items: currentOrderItemsForCheckoutDisplay, // All items for the 'none' split
+                    items: currentOrderItemsForCheckoutDisplay.filter(item => !item.isCourtesy), 
                     isPaid: false,
-                    // DTE for 'none' split is handled by the overall DTE section
                 });
             } else if (newUiSplits.length === 1 && newUiSplits[0].id === 'split-none-full' && !newUiSplits[0].isPaid) {
-                // Update the amount if the total changes
                 newUiSplits[0].amountDue = totalOrderAmount;
                 newUiSplits[0].amountToPay = totalOrderAmount.toFixed(2);
             }
@@ -708,7 +720,7 @@ function OrdersPageContent() {
         setUiSplits([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paymentSplitType, paymentSplitWays, itemsToSplitBy, currentStep, loadedOrderForCheckout, currentOrderItemsForCheckoutDisplay, finalTotalAmountForCheckout, tipAmount, coveredItemIdsForSplitting, isOrderFullyPaid, isCourtesyCheckout, isOnHoldCheckout, orderTotalsForCheckout, overallDteType, overallDteNit, overallDteNrc, overallDteCustomerName]);
+  }, [paymentSplitType, paymentSplitWays, itemsToSplitBy, currentStep, loadedOrderForCheckout, currentOrderItemsForCheckoutDisplay, finalTotalAmountForCheckout, tipAmount, coveredItemIdsForSplitting, isOrderFullyPaid, isCourtesyCheckout, isOnHoldCheckout, orderTotalsForCheckout]);
 
 
   const handlePaySplit = (splitId: string) => {
@@ -723,11 +735,10 @@ function OrdersPageContent() {
                 toast({ title: "Invalid Amount", description: "Enter a valid amount to pay for this share.", variant: "destructive" });
                 return split;
             }
-            // Amount to pay should not exceed amount due for the split by more than a tiny margin for rounding
+            
             if (amountToPayNum > split.amountDue + 0.01) {
-                toast({ title: "Overpayment", description: `Payment ($${amountToPayNum.toFixed(2)}) exceeds due amount for this share ($${split.amountDue.toFixed(2)}). Adjust if necessary.`, variant: "destructive" });
-                // Allow overpayment if user confirms or if it's small, for this mock we'll allow it.
-                // In a real system, this might need more complex handling (change given, apply to other splits, etc.)
+                toast({ title: "Overpayment Warning", description: `Payment ($${amountToPayNum.toFixed(2)}) exceeds due amount for this share ($${split.amountDue.toFixed(2)}). Please adjust or confirm.`, variant: "default" });
+                 // For prototype, allow overpayment on a share if user proceeds
             }
             
             if (split.dteType === 'credito_fiscal' && (!split.dteInvoiceInfo?.nit || !split.dteInvoiceInfo?.nrc || !split.dteInvoiceInfo?.customerName)) {
@@ -735,7 +746,7 @@ function OrdersPageContent() {
                 return split;
             }
 
-            toast({ title: "Share Paid (Mock)", description: `Share ${splitId.slice(0,10)} paid $${amountToPayNum.toFixed(2)} via ${split.paymentMethod}.` });
+            toast({ title: "Share Paid (Mock)", description: `Share ${splitId.slice(0,10)} for $${amountToPayNum.toFixed(2)} via ${split.paymentMethod} marked as paid.` });
             
             if (paymentSplitType === 'by_item') {
                 setCoveredItemIdsForSplitting(prev => [...new Set([...prev, ...split.items.map(i => i.id)])]);
@@ -782,22 +793,62 @@ function OrdersPageContent() {
   }, [loadedOrderForCheckout, pageMode]);
 
   const appliedDiscountDescription = useMemo(() => {
-    if (isCourtesyCheckout) return "Full Order Courtesy Applied";
+    if (isCourtesyCheckout) return { description: "Full Order Courtesy Applied", value: orderTotalsForCheckout.subtotal };
     
-    let descriptions: string[] = [];
+    let presetDesc = "";
+    let manualDesc = "";
+    let presetVal = 0;
+    let manualVal = manualDiscountAmountCheckout;
+
     if (selectedDiscountId) {
       const discount = mockPresetDiscounts.find(d => d.id === selectedDiscountId);
-      if (discount) descriptions.push(`${discount.name} (${discount.percentage}%)`);
-    }
-    if (appliedCouponCode && !selectedDiscountId) { // Only show coupon if not overridden by direct preset selection
+      if (discount) {
+        presetDesc = `${discount.name} (${discount.percentage}%)`;
+        presetVal = orderTotalsForCheckout.appliedPresetDiscountValue || 0;
+      }
+    } else if (appliedCouponCode) {
         const discount = mockPresetDiscounts.find(d => d.couponCode?.toLowerCase() === appliedCouponCode.toLowerCase());
-        if (discount && !selectedDiscountId) descriptions.push(`Coupon: ${discount.name} (${discount.percentage}%)`);
+         if (discount) {
+            presetDesc = `Coupon: ${discount.name} (${discount.percentage}%)`;
+            presetVal = orderTotalsForCheckout.appliedPresetDiscountValue || 0;
+         }
     }
-    if (manualDiscountAmountCheckout > 0) descriptions.push(`Manual Discount`);
+    
+    if (manualDiscountAmountCheckout > 0) {
+        manualDesc = `Manual Discount`;
+        manualVal = orderTotalsForCheckout.appliedManualDiscountValue || 0;
+    }
+    
+    const descriptions: string[] = [];
+    if (presetDesc) descriptions.push(`${presetDesc}: -$${presetVal.toFixed(2)}`);
+    if (manualDesc) descriptions.push(`${manualDesc}: -$${manualVal.toFixed(2)}`);
 
-    if (descriptions.length === 0) return "No Discount Applied";
-    return descriptions.join(' + ');
-  }, [selectedDiscountId, appliedCouponCode, manualDiscountAmountCheckout, isCourtesyCheckout]);
+
+    if (descriptions.length === 0) return { description: "No Discount Applied", value: 0 };
+    return { 
+        descriptionLines: descriptions,
+        totalValue: orderTotalsForCheckout.discountAmount || 0
+    };
+  }, [selectedDiscountId, appliedCouponCode, manualDiscountAmountCheckout, isCourtesyCheckout, orderTotalsForCheckout]);
+
+  const checkoutStepTitles: Record<CheckoutSubStep, string> = {
+    summary_and_courtesy: "Order Summary & Item Courtesy",
+    discounts_and_tip: "Discounts & Tip",
+    payment_splitting: "Payment & DTE Options",
+    final_review_and_pay: "Final Review & Payment",
+  };
+
+  const handleNextCheckoutStep = () => {
+    if (currentCheckoutSubStep === 'summary_and_courtesy') setCurrentCheckoutSubStep('discounts_and_tip');
+    else if (currentCheckoutSubStep === 'discounts_and_tip') setCurrentCheckoutSubStep('payment_splitting');
+    else if (currentCheckoutSubStep === 'payment_splitting') setCurrentCheckoutSubStep('final_review_and_pay');
+  };
+
+  const handlePreviousCheckoutStep = () => {
+    if (currentCheckoutSubStep === 'final_review_and_pay') setCurrentCheckoutSubStep('payment_splitting');
+    else if (currentCheckoutSubStep === 'payment_splitting') setCurrentCheckoutSubStep('discounts_and_tip');
+    else if (currentCheckoutSubStep === 'discounts_and_tip') setCurrentCheckoutSubStep('summary_and_courtesy');
+  };
 
 
   return (
@@ -811,7 +862,7 @@ function OrdersPageContent() {
               if(checkoutOrderIdParam) router.push(`/dashboard/active-orders/${checkoutOrderIdParam}`); else resetOrderFormFull();
             }}>
                 <ArrowLeft className="mr-2 h-4 w-4" /> 
-                {checkoutOrderIdParam ? "Back to Active Order" : "Cancel Checkout & Start New"}
+                {checkoutOrderIdParam ? "Back to Active Order Details" : "Cancel Checkout & Start New"}
             </Button>
         )}
          {(pageMode === 'add_to_active' || pageMode === 'new_order' && currentStep === 'building') && (
@@ -1134,234 +1185,264 @@ function OrdersPageContent() {
         </div>
       )}
 
-      {currentStep === 'checkout' && loadedOrderForCheckout && (
+    {currentStep === 'checkout' && loadedOrderForCheckout && (
          <Card className="shadow-xl max-w-4xl mx-auto">
             <CardHeader>
-                <CardTitle className="font-headline flex items-center"><CreditCard className="mr-2 h-5 w-5"/>Payment Details</CardTitle>
-                <CardDescription>Review order #{loadedOrderForCheckout.id.slice(-6)} and complete the payment.</CardDescription>
+                <CardTitle className="font-headline flex items-center"><CreditCard className="mr-2 h-5 w-5"/>Checkout Steps</CardTitle>
+                <CardDescription>Order #{loadedOrderForCheckout.id.slice(-6)} - Current Step: <span className="font-semibold text-primary">{checkoutStepTitles[currentCheckoutSubStep]}</span></CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-                <div>
-                    <h4 className="font-semibold mb-2">Order Summary</h4>
-                    <ScrollArea className="h-[200px] border rounded-md p-3">
-                        {currentOrderItemsForCheckoutDisplay.map(item => (
-                            <div key={item.id} className="flex justify-between items-center py-1.5 border-b last:border-b-0">
-                                <div className="flex-grow">
-                                    <p className={`font-medium ${item.isCourtesy ? 'line-through text-muted-foreground' : ''}`}>{item.quantity}x {item.name} {item.assignedGuest && <span className="text-xs text-muted-foreground">({item.assignedGuest})</span>}</p>
-                                    <p className={`text-xs ${item.isCourtesy ? 'line-through text-muted-foreground' : 'text-muted-foreground'}`}>Unit: ${item.price.toFixed(2)} / Total: ${(item.price * item.quantity).toFixed(2)}</p>
-                                    {item.observations && <p className="text-xs text-blue-500 mt-0.5">Notes: {item.observations}</p>}
+                {/* Step 1: Order Summary & Item Courtesy */}
+                {currentCheckoutSubStep === 'summary_and_courtesy' && (
+                    <div>
+                        <h4 className="font-semibold mb-2 text-lg">Order Summary & Item Courtesy</h4>
+                        <p className="text-sm text-muted-foreground mb-3">Review items. You can mark individual items as courtesy (free of charge) here.</p>
+                        <ScrollArea className="h-[300px] border rounded-md p-3">
+                            {currentOrderItemsForCheckoutDisplay.map(item => (
+                                <div key={item.id} className="flex justify-between items-center py-1.5 border-b last:border-b-0">
+                                    <div className="flex-grow">
+                                        <p className={`font-medium ${item.isCourtesy ? 'line-through text-muted-foreground' : ''}`}>{item.quantity}x {item.name} {item.assignedGuest && <span className="text-xs text-muted-foreground">({item.assignedGuest})</span>}</p>
+                                        <p className={`text-xs ${item.isCourtesy ? 'line-through text-muted-foreground' : 'text-muted-foreground'}`}>Unit: ${item.price.toFixed(2)} / Total: ${(item.price * item.quantity).toFixed(2)}</p>
+                                        {item.observations && <p className="text-xs text-blue-500 mt-0.5">Notes: {item.observations}</p>}
+                                    </div>
+                                    <div className="flex items-center gap-2 ml-2">
+                                        {!isCourtesyCheckout && !isOnHoldCheckout && !isOrderFullyPaid && ( 
+                                        <TooltipProvider>
+                                            <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <div className="flex items-center space-x-1">
+                                                   <CircleDollarSign className={`h-4 w-4 ${itemCourtesiesCheckout[item.id] ? 'text-green-500' : 'text-muted-foreground'}`} />
+                                                    <Checkbox
+                                                    id={`courtesy-${item.id}`}
+                                                    checked={item.isCourtesy}
+                                                    onCheckedChange={() => handleToggleItemCourtesyCheckout(item.id)}
+                                                    aria-label={`Mark ${item.name} as courtesy`}
+                                                    disabled={isOnHoldCheckout || isOrderFullyPaid || isCourtesyCheckout}
+                                                    />
+                                                </div>
+                                            </TooltipTrigger>
+                                            <TooltipContent><p>Mark this item as courtesy (free of charge).</p></TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
+                                        )}
+                                    </div>
                                 </div>
-                                 <div className="flex items-center gap-2 ml-2">
-                                    {!isCourtesyCheckout && !isOnHoldCheckout && !isOrderFullyPaid && ( 
-                                      <TooltipProvider>
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <Checkbox
-                                              id={`courtesy-${item.id}`}
-                                              checked={item.isCourtesy}
-                                              onCheckedChange={() => handleToggleItemCourtesyCheckout(item.id)}
-                                              aria-label={`Mark ${item.name} as courtesy`}
-                                              disabled={isOnHoldCheckout || isOrderFullyPaid || isCourtesyCheckout}
-                                            />
-                                          </TooltipTrigger>
-                                          <TooltipContent><p>Mark as Courtesy</p></TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
-                                    )}
-                                    {paymentSplitType === 'by_item' && !coveredItemIdsForSplitting.includes(item.id) && !item.isCourtesy && (
-                                      <Checkbox
-                                        checked={!!itemsToSplitBy[item.id]}
-                                        onCheckedChange={(checked) => setItemsToSplitBy(prev => ({...prev, [item.id]: !!checked}))}
-                                        aria-label={`Select ${item.name} for separate payment`}
-                                        disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}
-                                      />
-                                    )}
-                                     {paymentSplitType === 'by_item' && coveredItemIdsForSplitting.includes(item.id) && (
-                                        <Badge variant="outline" className="text-xs border-green-500 text-green-600">Covered</Badge>
-                                     )}
-                                 </div>
-                            </div>
-                        ))}
-                         {loadedOrderForCheckout.items.filter(i => i.status === 'cancelled').length > 0 && (
-                            <div className="mt-2 pt-2 border-t">
-                                <p className="text-xs text-muted-foreground font-semibold mb-1">Cancelled Items:</p>
-                                {loadedOrderForCheckout.items.filter(i => i.status === 'cancelled').map(item => (
-                                    <p key={item.id} className="text-xs text-destructive line-through">{item.quantity}x {item.name}</p>
-                                ))}
-                            </div>
-                         )}
-                    </ScrollArea>
-                </div>
-                
-                <Separator />
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-                    <Card className="p-4 border shadow-sm">
-                        <CardHeader className="p-0 pb-3">
-                             <CardTitle className="font-headline text-lg flex items-center"><TicketPercent className="mr-2 h-5 w-5 text-primary"/>Discount Options</CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-0 space-y-3">
-                             <Select 
-                                value={selectedDiscountId || "none"} 
-                                onValueChange={(value) => {
-                                    setSelectedDiscountId(value === 'none' ? undefined : value); 
-                                    if (value !== 'none') { setAppliedCouponCode(''); } // Clear coupon if preset selected
-                                }} 
-                                disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}
-                            >
-                                <SelectTrigger aria-label="Select Discount">
-                                    <SelectValue placeholder="No Preset Discount" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="none">No Preset Discount</SelectItem>
-                                    {mockPresetDiscounts.map(d => (
-                                        <SelectItem key={d.id} value={d.id}>{d.name} ({d.percentage}%) {d.couponCode && `(Code: ${d.couponCode})`}</SelectItem>
+                            ))}
+                            {loadedOrderForCheckout.items.filter(i => i.status === 'cancelled').length > 0 && (
+                                <div className="mt-2 pt-2 border-t">
+                                    <p className="text-xs text-muted-foreground font-semibold mb-1">Cancelled Items:</p>
+                                    {loadedOrderForCheckout.items.filter(i => i.status === 'cancelled').map(item => (
+                                        <p key={item.id} className="text-xs text-destructive line-through">{item.quantity}x {item.name}</p>
                                     ))}
-                                </SelectContent>
-                             </Select>
-                             <div className="flex items-center gap-2">
-                                <Input 
-                                    type="text" 
-                                    placeholder="Enter Coupon Code" 
-                                    value={appliedCouponCode} 
-                                    onChange={e => setAppliedCouponCode(e.target.value.toUpperCase())}
-                                    className="h-9 flex-grow"
-                                    disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid || !!selectedDiscountId}
-                                />
-                                <Button variant="outline" size="sm" onClick={handleApplyCoupon} disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid || !!selectedDiscountId}>Apply</Button>
-                             </div>
-                             <div>
-                                <Label htmlFor="manualDiscountAmount" className="text-sm">Additional Manual Discount ($)</Label>
-                                <Input 
-                                    id="manualDiscountAmount"
-                                    type="number" 
-                                    value={manualDiscountAmountCheckout} 
-                                    onChange={e => {
-                                        setManualDiscountAmountCheckout(parseFloat(e.target.value) || 0); 
-                                    }}
-                                    className="h-9 mt-1"
-                                    disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}
-                                    placeholder="e.g., 5.00"
-                                    step="0.01"
-                                />
-                             </div>
-                        </CardContent>
-                    </Card>
+                                </div>
+                            )}
+                        </ScrollArea>
+                         <div className="space-y-2 text-sm mt-4 border-t pt-4">
+                            <div className="flex justify-between"><span>Subtotal (after item courtesies):</span> <span>${orderTotalsForCheckout.subtotal.toFixed(2)}</span></div>
+                            {orderTotalsForCheckout.appliedPresetDiscountValue > 0 && !isCourtesyCheckout && <div className="flex justify-between text-destructive"><span>Preset/Coupon Discount:</span> <span>-${orderTotalsForCheckout.appliedPresetDiscountValue.toFixed(2)}</span></div>}
+                            {orderTotalsForCheckout.appliedManualDiscountValue > 0 && !isCourtesyCheckout && <div className="flex justify-between text-destructive"><span>Manual Discount:</span> <span>-${orderTotalsForCheckout.appliedManualDiscountValue.toFixed(2)}</span></div>}
+                            {orderTotalsForCheckout.discountAmount > 0 && !isCourtesyCheckout && <div className="flex justify-between text-destructive font-semibold"><span>Total Discounts:</span> <span>-${orderTotalsForCheckout.discountAmount.toFixed(2)}</span></div>}
 
-                    <Card className="p-4 border shadow-sm">
-                        <CardHeader className="p-0 pb-3">
-                            <CardTitle className="font-headline text-lg flex items-center"><DollarSignIcon className="mr-2 h-5 w-5 text-primary"/>Tip Options</CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-0 space-y-2">
-                            <RadioGroup 
-                                value={tipMode} 
-                                onValueChange={(value) => setTipMode(value as TipMode)} 
-                                disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid} 
-                                className="space-y-1"
-                            >
-                                <div className="flex items-center space-x-3 h-9">
-                                    <RadioGroupItem value="default" id="tipDefault" />
-                                    <Label htmlFor="tipDefault" className="flex-1 cursor-pointer">Default ({DEFAULT_TIP_PERCENTAGE}%)</Label>
-                                </div>
-                                <div className="flex items-center space-x-3 h-9">
-                                    <RadioGroupItem value="percentage" id="tipPercentage" />
-                                    <Label htmlFor="tipPercentage" className="cursor-pointer w-[90px]">Custom %</Label>
-                                    <Input type="number" value={customTipPercentage} onChange={e => setCustomTipPercentage(Number(e.target.value))} className={cn("w-20 h-8 text-sm text-center", tipMode !== 'percentage' && "invisible")} aria-label="Custom tip percentage" disabled={tipMode !== 'percentage' || isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid} />
-                                    {tipMode === 'percentage' && <span className="text-sm w-5">%</span>}
-                                </div>
-                                <div className="flex items-center space-x-3 h-9">
-                                    <RadioGroupItem value="manual" id="tipManual" />
-                                    <Label htmlFor="tipManual" className="cursor-pointer w-[90px]">Manual $</Label>
-                                    <Input type="number" value={manualTipAmount} onChange={e => setManualTipAmount(Number(e.target.value))} className={cn("w-20 h-8 text-sm text-center", tipMode !== 'manual' && "invisible")} aria-label="Manual tip amount" disabled={tipMode !== 'manual' || isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}/>
-                                     {tipMode === 'manual' && <span className="text-sm w-5">$</span>}
-                                </div>
-                            </RadioGroup>
-                        </CardContent>
-                    </Card>
-                </div>
-                 
-                <Separator />
-                <div className="space-y-2 text-sm">
-                    <div className="flex justify-between"><span>Subtotal (after item courtesies):</span> <span>${orderTotalsForCheckout.subtotal.toFixed(2)}</span></div>
-                    {orderTotalsForCheckout.discountAmount > 0 && !isCourtesyCheckout && <div className="flex justify-between text-destructive"><span>{appliedDiscountDescription}:</span> <span>-${orderTotalsForCheckout.discountAmount.toFixed(2)}</span></div>}
-                    {isCourtesyCheckout && <div className="flex justify-between text-green-600"><span>Full Order Courtesy:</span> <span>-${orderTotalsForCheckout.subtotal.toFixed(2)}</span></div>}
-                    <div className="flex justify-between"><span>Subtotal after All Discounts:</span> <span>${(orderTotalsForCheckout.subtotal - (orderTotalsForCheckout.discountAmount || 0)).toFixed(2)}</span></div>
-                    <div className="flex justify-between"><span>Tip:</span> <span>${tipAmount.toFixed(2)}</span></div>
-                    <div className="flex justify-between"><span>Tax ({(IVA_RATE * 100).toFixed(0)}%):</span> <span>${orderTotalsForCheckout.taxAmount.toFixed(2)}</span></div>
-                    <div className="flex justify-between font-bold text-lg text-primary mt-2"><span>Grand Total:</span> <h1>${finalTotalAmountForCheckout.toFixed(2)}</h1></div>
-                </div>
-
-                <Separator />
-                
-                <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                        <Label className="font-headline text-lg flex items-center"><DivideSquare className="mr-2 h-5 w-5 text-primary"/>Payment Splitting</Label>
-                        {isOrderFullyPaid && <Badge className="bg-green-500 text-white">Order Fully Paid</Badge>}
-                    </div>
-                    <Select value={paymentSplitType} onValueChange={(value) => {setPaymentSplitType(value as PaymentSplitType); setItemsToSplitBy({}); setUiSplits([]); setCoveredItemIdsForSplitting([]);}} disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}>
-                        <SelectTrigger aria-label="Payment Split Type">
-                            <SelectValue placeholder="No Split" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="none">No Split (Full Payment)</SelectItem>
-                            <SelectItem value="equal">Split Equally</SelectItem>
-                            <SelectItem value="by_item">Split by Item</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    {paymentSplitType === 'equal' && (
-                        <div className="flex items-center gap-2">
-                            <Label htmlFor="splitWays">Number of Ways:</Label>
-                            <Input id="splitWays" type="number" value={paymentSplitWays} onChange={e => setPaymentSplitWays(Math.max(2, parseInt(e.target.value)))} min="2" className="w-20 h-8" disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}/>
+                            {isCourtesyCheckout && <div className="flex justify-between text-green-600"><span>Full Order Courtesy:</span> <span>-${orderTotalsForCheckout.subtotal.toFixed(2)}</span></div>}
+                            <div className="flex justify-between"><span>Subtotal after All Discounts:</span> <span>${(orderTotalsForCheckout.subtotal - (orderTotalsForCheckout.discountAmount || 0)).toFixed(2)}</span></div>
+                            <div className="flex justify-between"><span>Tip:</span> <span>${tipAmount.toFixed(2)}</span></div>
+                            <div className="flex justify-between"><span>Tax ({(IVA_RATE * 100).toFixed(0)}%):</span> <span>${orderTotalsForCheckout.taxAmount.toFixed(2)}</span></div>
+                            <div className="flex justify-between font-bold text-lg text-primary mt-2"><span>Grand Total:</span> <h1>${finalTotalAmountForCheckout.toFixed(2)}</h1></div>
                         </div>
-                    )}
-                    {paymentSplitType === 'by_item' && !isOrderFullyPaid && (
-                        <p className="text-xs text-muted-foreground">Select items in the summary above to include them in the current itemized payment section below. Paid items cannot be re-selected.</p>
-                    )}
+                    </div>
+                )}
 
-                    {uiSplits.map((split, index) => (
-                        <Card key={split.id} className={`p-4 ${split.isPaid ? 'bg-green-500/10 border-green-500' : 'bg-muted/30'}`}>
+                {/* Step 2: Discounts & Tip */}
+                {currentCheckoutSubStep === 'discounts_and_tip' && (
+                    <div className="space-y-6">
+                         <h4 className="font-semibold text-lg mb-1">Discounts & Tip</h4>
+                         <Card className="p-4 border shadow-sm">
                             <CardHeader className="p-0 pb-3">
-                                <CardTitle className="text-md flex justify-between items-center">
-                                    <span>
-                                    {paymentSplitType === 'equal' ? `Share ${index + 1} of ${paymentSplitWays}` : paymentSplitType === 'by_item' ? `Itemized Payment ${index + 1}` : 'Full Payment'}
-                                    </span>
-                                    {split.isPaid && <Badge className="ml-2 bg-green-600 text-white">Paid</Badge>}
-                                </CardTitle>
-                                 {paymentSplitType === 'by_item' && split.items.length > 0 && (
-                                    <ScrollArea className="max-h-20 text-xs text-muted-foreground mt-1">
-                                        Items: {split.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}
-                                    </ScrollArea>
-                                )}
+                                <CardTitle className="font-headline text-lg flex items-center"><TicketPercent className="mr-2 h-5 w-5 text-primary"/>Discount Options</CardTitle>
                             </CardHeader>
                             <CardContent className="p-0 space-y-3">
-                                <div className="flex justify-between text-sm">
-                                    <span>Amount Due for this share:</span>
-                                    <span className="font-semibold">${split.amountDue.toFixed(2)}</span>
+                                <Select 
+                                    value={selectedDiscountId || "none"} 
+                                    onValueChange={(value) => {
+                                        setSelectedDiscountId(value === 'none' ? undefined : value); 
+                                        if (value !== 'none') { setAppliedCouponCode(''); } 
+                                    }} 
+                                    disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}
+                                >
+                                    <SelectTrigger aria-label="Select Discount">
+                                        <SelectValue placeholder="No Preset Discount" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">No Preset Discount</SelectItem>
+                                        {mockPresetDiscounts.map(d => (
+                                            <SelectItem key={d.id} value={d.id}>{d.name} ({d.percentage}%) {d.couponCode && `(Code: ${d.couponCode})`}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <div className="flex items-center gap-2">
+                                    <Input 
+                                        type="text" 
+                                        placeholder="Enter Coupon Code" 
+                                        value={appliedCouponCode} 
+                                        onChange={e => setAppliedCouponCode(e.target.value.toUpperCase())}
+                                        className="h-9 flex-grow"
+                                        disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid || !!selectedDiscountId}
+                                    />
+                                    <Button variant="outline" size="sm" onClick={handleApplyCoupon} disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid || !!selectedDiscountId}>Apply</Button>
                                 </div>
-                                {!split.isPaid && (
-                                    <>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <Input 
-                                                type="number" 
-                                                value={split.amountToPay}
-                                                onChange={e => setUiSplits(prev => prev.map(s => s.id === split.id ? {...s, amountToPay: e.target.value} : s))}
-                                                placeholder="Amount to pay"
-                                                className="h-9"
-                                                step="0.01"
-                                            />
-                                            <Select 
-                                                value={split.paymentMethod} 
-                                                onValueChange={val => setUiSplits(prev => prev.map(s => s.id === split.id ? {...s, paymentMethod: val} : s))}
-                                            >
-                                                <SelectTrigger className="h-9"><SelectValue placeholder="Payment Method"/></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="cash">Cash</SelectItem>
-                                                    <SelectItem value="credit_card">Credit Card</SelectItem>
-                                                    <SelectItem value="digital_wallet">Digital Wallet</SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                <div>
+                                    <Label htmlFor="manualDiscountAmount" className="text-sm">Additional Manual Discount ($)</Label>
+                                    <Input 
+                                        id="manualDiscountAmount"
+                                        type="number" 
+                                        value={manualDiscountAmountCheckout} 
+                                        onChange={e => {
+                                            setManualDiscountAmountCheckout(parseFloat(e.target.value) || 0); 
+                                        }}
+                                        className="h-9 mt-1"
+                                        disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}
+                                        placeholder="e.g., 5.00"
+                                        step="0.01"
+                                    />
+                                </div>
+                                <Button variant="outline" size="sm" onClick={handleRemoveAllDiscounts} disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}>
+                                    <MinusCircle className="mr-2 h-4 w-4" /> Clear Applied Discounts
+                                </Button>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="p-4 border shadow-sm">
+                            <CardHeader className="p-0 pb-3">
+                                <CardTitle className="font-headline text-lg flex items-center"><DollarSignIcon className="mr-2 h-5 w-5 text-primary"/>Tip Options</CardTitle>
+                            </CardHeader>
+                            <CardContent className="p-0 space-y-2">
+                                <RadioGroup 
+                                    value={tipMode} 
+                                    onValueChange={(value) => setTipMode(value as TipMode)} 
+                                    disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid} 
+                                    className="space-y-1"
+                                >
+                                    <div className="flex items-center space-x-3 h-9">
+                                        <RadioGroupItem value="default" id="tipDefault" />
+                                        <Label htmlFor="tipDefault" className="flex-1 cursor-pointer">Default ({DEFAULT_TIP_PERCENTAGE}%)</Label>
+                                    </div>
+                                    <div className="flex items-center space-x-3 h-9">
+                                        <RadioGroupItem value="percentage" id="tipPercentage" />
+                                        <Label htmlFor="tipPercentage" className="cursor-pointer w-[90px] shrink-0">Custom %</Label>
+                                        <Input type="number" value={customTipPercentage} onChange={e => setCustomTipPercentage(Number(e.target.value))} className={cn("w-20 h-8 text-sm text-center", tipMode !== 'percentage' ? 'opacity-0 pointer-events-none' : '')} aria-label="Custom tip percentage" disabled={tipMode !== 'percentage' || isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid} />
+                                        {tipMode === 'percentage' && <span className="text-sm w-5 shrink-0">%</span>}
+                                    </div>
+                                    <div className="flex items-center space-x-3 h-9">
+                                        <RadioGroupItem value="manual" id="tipManual" />
+                                        <Label htmlFor="tipManual" className="cursor-pointer w-[90px] shrink-0">Manual $</Label>
+                                        <Input type="number" value={manualTipAmount} onChange={e => setManualTipAmount(Number(e.target.value))} className={cn("w-20 h-8 text-sm text-center", tipMode !== 'manual' ? 'opacity-0 pointer-events-none' : '')} aria-label="Manual tip amount" disabled={tipMode !== 'manual' || isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}/>
+                                        {tipMode === 'manual' && <span className="text-sm w-5 shrink-0">$</span>}
+                                    </div>
+                                </RadioGroup>
+                            </CardContent>
+                        </Card>
+                    </div>
+                )}
+                
+                {/* Step 3: Payment Splitting & DTE */}
+                {currentCheckoutSubStep === 'payment_splitting' && (
+                    <div className="space-y-4">
+                        <Label className="font-headline text-lg flex items-center"><DivideSquare className="mr-2 h-5 w-5 text-primary"/>Payment Splitting & DTE</Label>
+                        <div className="flex justify-between items-center">
+                            <Select value={paymentSplitType} onValueChange={(value) => {setPaymentSplitType(value as PaymentSplitType); setItemsToSplitBy({}); setUiSplits([]); setCoveredItemIdsForSplitting([]);}} disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}>
+                                <SelectTrigger aria-label="Payment Split Type" className="w-auto">
+                                    <SelectValue placeholder="No Split" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">No Split (Full Payment)</SelectItem>
+                                    <SelectItem value="equal">Split Equally</SelectItem>
+                                    <SelectItem value="by_item">Split by Item</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            {isOrderFullyPaid && <Badge className="bg-green-500 text-white">Order Fully Paid</Badge>}
+                        </div>
+                        {paymentSplitType === 'equal' && (
+                            <div className="flex items-center gap-2">
+                                <Label htmlFor="splitWays">Number of Ways:</Label>
+                                <Input id="splitWays" type="number" value={paymentSplitWays} onChange={e => setPaymentSplitWays(Math.max(2, parseInt(e.target.value)))} min="2" className="w-20 h-8" disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}/>
+                            </div>
+                        )}
+                         {paymentSplitType === 'by_item' && !isOrderFullyPaid && (
+                            <>
+                                <p className="text-xs text-muted-foreground mb-3">Select items from the order summary (Step 1) to include in the current itemized payment section below. Paid/covered items cannot be re-selected.</p>
+                                 <ScrollArea className="h-[200px] border rounded-md p-3 mb-3">
+                                    <h5 className="font-semibold mb-1 text-sm">Order Items for Splitting:</h5>
+                                    {currentOrderItemsForCheckoutDisplay.filter(item => !item.isCourtesy).map(item => (
+                                        <div key={`split-sel-${item.id}`} className="flex items-center justify-between py-1 border-b last:border-b-0">
+                                            <Label htmlFor={`split-item-${item.id}`} className="text-sm font-normal flex-grow">
+                                                {item.quantity}x {item.name} (${(item.price * item.quantity).toFixed(2)})
+                                            </Label>
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div className="flex items-center space-x-1">
+                                                           <CheckSquare className={`h-4 w-4 ${itemsToSplitBy[item.id] ? 'text-primary' : 'text-muted-foreground'}`} />
+                                                            <Checkbox
+                                                                id={`split-item-${item.id}`}
+                                                                checked={!!itemsToSplitBy[item.id]}
+                                                                onCheckedChange={(checked) => setItemsToSplitBy(prev => ({...prev, [item.id]: !!checked}))}
+                                                                disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid || coveredItemIdsForSplitting.includes(item.id)}
+                                                            />
+                                                        </div>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent><p>{coveredItemIdsForSplitting.includes(item.id) ? "Item covered in a previous split" : "Select this item for the current payment share"}</p></TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
                                         </div>
-                                        {paymentSplitType !== 'none' && ( // Only show DTE per split if actually splitting
+                                    ))}
+                                </ScrollArea>
+                            </>
+                        )}
+
+
+                        {uiSplits.map((split, index) => (
+                            <Card key={split.id} className={`p-4 ${split.isPaid ? 'bg-green-500/10 border-green-500' : 'bg-muted/30'}`}>
+                                <CardHeader className="p-0 pb-3">
+                                    <CardTitle className="text-md flex justify-between items-center">
+                                        <span>
+                                        {paymentSplitType === 'equal' ? `Share ${index + 1} of ${paymentSplitWays}` : paymentSplitType === 'by_item' ? `Itemized Payment ${index + 1}` : 'Full Payment'}
+                                        </span>
+                                        {split.isPaid && <Badge className="ml-2 bg-green-600 text-white">Paid</Badge>}
+                                    </CardTitle>
+                                    {paymentSplitType === 'by_item' && split.items.length > 0 && (
+                                        <ScrollArea className="max-h-20 text-xs text-muted-foreground mt-1">
+                                            Items: {split.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}
+                                        </ScrollArea>
+                                    )}
+                                </CardHeader>
+                                <CardContent className="p-0 space-y-3">
+                                    <div className="flex justify-between text-sm">
+                                        <span>Amount Due for this share:</span>
+                                        <span className="font-semibold">${split.amountDue.toFixed(2)}</span>
+                                    </div>
+                                    {!split.isPaid && (
+                                        <>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <Input 
+                                                    type="number" 
+                                                    value={split.amountToPay}
+                                                    onChange={e => setUiSplits(prev => prev.map(s => s.id === split.id ? {...s, amountToPay: e.target.value} : s))}
+                                                    placeholder="Amount to pay"
+                                                    className="h-9"
+                                                    step="0.01"
+                                                />
+                                                <Select 
+                                                    value={split.paymentMethod} 
+                                                    onValueChange={val => setUiSplits(prev => prev.map(s => s.id === split.id ? {...s, paymentMethod: val} : s))}
+                                                >
+                                                    <SelectTrigger className="h-9"><SelectValue placeholder="Payment Method"/></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="cash">Cash</SelectItem>
+                                                        <SelectItem value="credit_card">Credit Card</SelectItem>
+                                                        <SelectItem value="digital_wallet">Digital Wallet</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
                                             <div className="space-y-2 pt-2">
                                                 <Label className="text-xs font-medium">DTE for this Share (Optional)</Label>
                                                 <Select 
@@ -1397,74 +1478,115 @@ function OrdersPageContent() {
                                                     </div>
                                                 )}
                                             </div>
-                                        )}
-                                        <Button onClick={() => handlePaySplit(split.id)} size="sm" className="w-full mt-3" disabled={!split.paymentMethod || !split.amountToPay || parseFloat(split.amountToPay) <= 0 || parseFloat(split.amountToPay) > split.amountDue + 0.01 }>Pay This Share (Mock)</Button>
-                                    </>
-                                )}
-                                {split.paymentMethod && split.isPaid && <p className="text-xs text-muted-foreground">Paid via: {split.paymentMethod} {split.dteType && split.dteType !== 'consumidor_final' ? `(DTE: ${split.dteType})` : ''}</p>}
-                            </CardContent>
-                        </Card>
-                    ))}
-                     {paymentSplitType === 'none' && !isOrderFullyPaid && ( 
-                        <Card className="p-4 bg-muted/30">
-                            <CardHeader className="p-0 pb-3">
-                                <CardTitle className="text-md flex items-center"><FileText className="mr-2 h-4 w-4 text-primary"/>DTE Invoice (El Salvador)</CardTitle>
-                            </CardHeader>
-                            <CardContent className="p-0 space-y-3">
-                                <Select value={overallDteType} onValueChange={(value) => setOverallDteType(value as 'consumidor_final' | 'credito_fiscal')} disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}>
-                                    <SelectTrigger aria-label="DTE Document Type">
-                                        <SelectValue placeholder="Select DTE Type"/>
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="consumidor_final">Consumidor Final</SelectItem>
-                                        <SelectItem value="credito_fiscal">Crédito Fiscal</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                {overallDteType === 'credito_fiscal' && (
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                        <Input placeholder="NIT Cliente" value={overallDteNit} onChange={e => setOverallDteNit(e.target.value)} aria-label="DTE NIT Cliente" disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}/>
-                                        <Input placeholder="NRC Cliente" value={overallDteNrc} onChange={e => setOverallDteNrc(e.target.value)} aria-label="DTE NRC Cliente" disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}/>
-                                        <Input placeholder="Nombre Cliente" value={overallDteCustomerName} onChange={e => setOverallDteCustomerName(e.target.value)} aria-label="DTE Customer Name" disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}/>
-                                    </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    )}
-                </div>
-                
-                <Separator />
-                <div className="space-y-3">
-                    <Label className="font-headline text-lg flex items-center"><StickyNote className="mr-2 h-5 w-5 text-primary"/>Order Final Actions</Label>
-                    <div className="flex flex-wrap gap-x-6 gap-y-3 items-center">
-                        <div className="flex items-center space-x-2">
-                            <Checkbox id="isCourtesyCheckout" checked={isCourtesyCheckout} onCheckedChange={(val) => setIsCourtesyCheckout(!!val)} disabled={isOnHoldCheckout || isOrderFullyPaid}/>
-                            <Label htmlFor="isCourtesyCheckout" className="flex items-center cursor-pointer"><CircleDollarSign className="mr-1 h-4 w-4 text-green-500"/>Mark Entire Order as Courtesy</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                            <Checkbox id="isOnHoldCheckout" checked={isOnHoldCheckout} onCheckedChange={(val) => setIsOnHoldCheckout(!!val)} disabled={isCourtesyCheckout || isOrderFullyPaid} />
-                            <Label htmlFor="isOnHoldCheckout" className="flex items-center cursor-pointer"><WalletCards className="mr-1 h-4 w-4 text-yellow-500"/>Hold Bill (No Payment)</Label>
-                        </div>
-                         <div className="flex items-center space-x-2">
-                            <Checkbox id="disableReceiptPrintCheckout" checked={disableReceiptPrintCheckout} onCheckedChange={(val) => setDisableReceiptPrintCheckout(!!val)}/>
-                            <Label htmlFor="disableReceiptPrintCheckout" className="flex items-center cursor-pointer"><EyeOff className="mr-1 h-4 w-4"/>No Receipt Print</Label>
-                        </div>
+                                            <Button onClick={() => handlePaySplit(split.id)} size="sm" className="w-full mt-3" 
+                                                disabled={!split.paymentMethod || !split.amountToPay || parseFloat(split.amountToPay) <= 0 || (parseFloat(split.amountToPay) > split.amountDue + 0.01 && paymentSplitType !== 'equal') }>
+                                                Pay This Share (Mock)
+                                            </Button>
+                                        </>
+                                    )}
+                                    {split.paymentMethod && split.isPaid && <p className="text-xs text-muted-foreground">Paid via: {split.paymentMethod} {split.dteType && split.dteType !== 'consumidor_final' ? `(DTE: ${split.dteType})` : ''}</p>}
+                                </CardContent>
+                            </Card>
+                        ))}
+                        {paymentSplitType === 'none' && !isOrderFullyPaid && ( 
+                            <Card className="p-4 bg-muted/30">
+                                <CardHeader className="p-0 pb-3">
+                                    <CardTitle className="text-md flex items-center"><FileText className="mr-2 h-4 w-4 text-primary"/>DTE Invoice (El Salvador)</CardTitle>
+                                </CardHeader>
+                                <CardContent className="p-0 space-y-3">
+                                    <Select value={overallDteType} onValueChange={(value) => setOverallDteType(value as 'consumidor_final' | 'credito_fiscal')} disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}>
+                                        <SelectTrigger aria-label="DTE Document Type">
+                                            <SelectValue placeholder="Select DTE Type"/>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="consumidor_final">Consumidor Final</SelectItem>
+                                            <SelectItem value="credito_fiscal">Crédito Fiscal</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    {overallDteType === 'credito_fiscal' && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                            <Input placeholder="NIT Cliente" value={overallDteNit} onChange={e => setOverallDteNit(e.target.value)} aria-label="DTE NIT Cliente" disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}/>
+                                            <Input placeholder="NRC Cliente" value={overallDteNrc} onChange={e => setOverallDteNrc(e.target.value)} aria-label="DTE NRC Cliente" disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}/>
+                                            <Input placeholder="Nombre Cliente" value={overallDteCustomerName} onChange={e => setOverallDteCustomerName(e.target.value)} aria-label="DTE Customer Name" disabled={isCourtesyCheckout || isOnHoldCheckout || isOrderFullyPaid}/>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        )}
                     </div>
-                </div>
+                )}
+
+                {/* Step 4: Final Actions & Payment Confirmation */}
+                 {currentCheckoutSubStep === 'final_review_and_pay' && (
+                    <div className="space-y-6">
+                        <h4 className="font-semibold text-lg mb-1">Final Actions & Confirmation</h4>
+                        <div className="space-y-2 text-sm border p-3 rounded-md">
+                            <p className="font-medium text-md">Order Total Summary:</p>
+                            <div className="flex justify-between"><span>Subtotal (after item courtesies):</span> <span>${orderTotalsForCheckout.subtotal.toFixed(2)}</span></div>
+                            {orderTotalsForCheckout.appliedPresetDiscountValue > 0 && !isCourtesyCheckout && <div className="flex justify-between text-destructive"><span>Preset/Coupon Discount:</span> <span>-${orderTotalsForCheckout.appliedPresetDiscountValue.toFixed(2)}</span></div>}
+                            {orderTotalsForCheckout.appliedManualDiscountValue > 0 && !isCourtesyCheckout && <div className="flex justify-between text-destructive"><span>Manual Discount:</span> <span>-${orderTotalsForCheckout.appliedManualDiscountValue.toFixed(2)}</span></div>}
+                            {orderTotalsForCheckout.discountAmount > 0 && !isCourtesyCheckout && <div className="flex justify-between text-destructive font-semibold"><span>Total Discounts:</span> <span>-${orderTotalsForCheckout.discountAmount.toFixed(2)}</span></div>}
+                            {isCourtesyCheckout && <div className="flex justify-between text-green-600"><span>Full Order Courtesy:</span> <span>-${orderTotalsForCheckout.subtotal.toFixed(2)}</span></div>}
+                            <div className="flex justify-between"><span>Subtotal after All Discounts:</span> <span>${(orderTotalsForCheckout.subtotal - (orderTotalsForCheckout.discountAmount || 0)).toFixed(2)}</span></div>
+                            <div className="flex justify-between"><span>Tip:</span> <span>${tipAmount.toFixed(2)}</span></div>
+                            <div className="flex justify-between"><span>Tax ({(IVA_RATE * 100).toFixed(0)}%):</span> <span>${orderTotalsForCheckout.taxAmount.toFixed(2)}</span></div>
+                            <div className="flex justify-between font-bold text-lg text-primary mt-2"><span>Grand Total:</span> <h1>${finalTotalAmountForCheckout.toFixed(2)}</h1></div>
+                             {paymentSplitType !== 'none' && uiSplits.filter(s=>s.isPaid).length > 0 && (
+                                <div className="flex justify-between text-green-600">
+                                    <span>Total Paid in Splits:</span> 
+                                    <span>${uiSplits.filter(s => s.isPaid).reduce((sum, s) => sum + parseFloat(s.amountToPay || '0'), 0).toFixed(2)}</span>
+                                </div>
+                             )}
+                        </div>
+                        
+                        <div className="space-y-3">
+                            <Label className="font-headline text-md flex items-center"><StickyNote className="mr-2 h-5 w-5 text-primary"/>Order Final Actions</Label>
+                            <div className="flex flex-wrap gap-x-6 gap-y-3 items-center">
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox id="isCourtesyCheckout" checked={isCourtesyCheckout} onCheckedChange={(val) => setIsCourtesyCheckout(!!val)} disabled={isOnHoldCheckout || isOrderFullyPaid}/>
+                                    <Label htmlFor="isCourtesyCheckout" className="flex items-center cursor-pointer"><CircleDollarSign className="mr-1 h-4 w-4 text-green-500"/>Mark Entire Order as Courtesy</Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox id="isOnHoldCheckout" checked={isOnHoldCheckout} onCheckedChange={(val) => setIsOnHoldCheckout(!!val)} disabled={isCourtesyCheckout || isOrderFullyPaid} />
+                                    <Label htmlFor="isOnHoldCheckout" className="flex items-center cursor-pointer"><WalletCards className="mr-1 h-4 w-4 text-yellow-500"/>Hold Bill (No Payment)</Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox id="disableReceiptPrintCheckout" checked={disableReceiptPrintCheckout} onCheckedChange={(val) => setDisableReceiptPrintCheckout(!!val)}/>
+                                    <Label htmlFor="disableReceiptPrintCheckout" className="flex items-center cursor-pointer"><EyeOff className="mr-1 h-4 w-4"/>No Receipt Print</Label>
+                                </div>
+                            </div>
+                        </div>
+                        <Button 
+                            className="w-full" 
+                            size="lg" 
+                            onClick={handleFinalizePayment} 
+                            disabled={
+                                !loadedOrderForCheckout ||
+                                (!isCourtesyCheckout && !isOnHoldCheckout && paymentSplitType !== 'none' && !isOrderFullyPaid) ||
+                                (!isCourtesyCheckout && !isOnHoldCheckout && paymentSplitType === 'none' && !overallPaymentMethod && !isOrderFullyPaid && finalTotalAmountForCheckout > 0)
+                            }
+                        >
+                            <Save className="mr-2 h-5 w-5" /> 
+                            {isCourtesyCheckout ? "Finalize as Courtesy" : isOnHoldCheckout ? "Confirm On Hold Status" : "Finalize & Pay Order"}
+                        </Button>
+                    </div>
+                 )}
+
             </CardContent>
-            <CardFooter className="border-t pt-4">
-                 <Button 
-                    className="w-full" 
-                    size="lg" 
-                    onClick={handleFinalizePayment} 
-                    disabled={
-                        !loadedOrderForCheckout ||
-                        (!isCourtesyCheckout && !isOnHoldCheckout && paymentSplitType !== 'none' && !isOrderFullyPaid) ||
-                        (!isCourtesyCheckout && !isOnHoldCheckout && paymentSplitType === 'none' && !overallPaymentMethod && !isOrderFullyPaid)
-                    }
-                  >
-                    <Save className="mr-2 h-5 w-5" /> 
-                    {isCourtesyCheckout ? "Finalize as Courtesy" : isOnHoldCheckout ? "Confirm On Hold Status" : "Finalize & Pay Order"}
-                 </Button>
+            <CardFooter className="border-t pt-4 flex justify-between">
+                <Button 
+                    variant="outline" 
+                    onClick={handlePreviousCheckoutStep} 
+                    disabled={currentCheckoutSubStep === 'summary_and_courtesy'}
+                >
+                    <ArrowLeft className="mr-2 h-4 w-4"/> Previous Step
+                </Button>
+                <Button 
+                    onClick={handleNextCheckoutStep} 
+                    disabled={currentCheckoutSubStep === 'final_review_and_pay'}
+                >
+                    Next Step <ArrowRight className="ml-2 h-4 w-4"/>
+                </Button>
             </CardFooter>
          </Card>
       )}
