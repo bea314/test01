@@ -2,8 +2,7 @@
 import { redirect } from 'next/navigation';
 
 export default function HomePage() {
-  // For now, redirect to dashboard. In a real app, this could be a landing page or check auth.
-  // If you want a login page, redirect to '/auth/login'
-  redirect('/dashboard');
+  // Redirect to the new dashboard home page
+  redirect('/dashboard/home');
   return null; // Redirect will prevent rendering
 }

@@ -159,6 +159,7 @@ export default function OrdersPage() {
                     <SelectContent>
                         <SelectItem value="Dine-in">Dine-in</SelectItem>
                         <SelectItem value="Takeout">Takeout</SelectItem>
+                        <SelectItem value="Delivery">Delivery</SelectItem>
                     </SelectContent>
                 </Select>
                 <Select value={selectedWaiter} onValueChange={setSelectedWaiter}>

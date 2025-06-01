@@ -36,7 +36,7 @@ export default function DashboardPage() {
             className={cn(
               "shadow-lg rounded-lg overflow-hidden transition-all hover:shadow-xl",
               {
-                'border-green-500 bg-card': table.status === 'available', // Changed background to bg-card
+                'border-green-500 bg-card': table.status === 'available',
                 'border-blue-500 bg-blue-500/20': table.status === 'occupied',
                 'border-yellow-500 bg-yellow-500/20': table.status === 'reserved',
                 'border-border': !['available', 'occupied', 'reserved'].includes(table.status) // Fallback
@@ -74,16 +74,6 @@ export default function DashboardPage() {
           </Card>
         ))}
       </div>
-      
-      <div className="mt-12 p-6 bg-card rounded-lg shadow">
-        <h2 className="text-2xl font-headline font-semibold mb-4">Quick Actions</h2>
-        <div className="flex space-x-4">
-          <Button variant="secondary">Start Takeout Order</Button>
-          <Button variant="secondary">View All Active Orders</Button>
-          <Button variant="secondary">Access Kitchen Display (Mock)</Button>
-        </div>
-      </div>
-
     </div>
   );
 }

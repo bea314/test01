@@ -1,6 +1,6 @@
 
 import type { LucideIcon } from 'lucide-react';
-import { LayoutGrid, ShoppingCart, BookOpen, Settings, Users,ClipboardList } from 'lucide-react';
+import { LayoutGrid, ShoppingCart, BookOpen, Settings, Users, ClipboardList, Home } from 'lucide-react';
 
 export interface NavItem {
   href: string;
@@ -12,8 +12,9 @@ export interface NavItem {
 export type UserRole = 'admin' | 'cashier' | 'waiter';
 
 export const NAV_ITEMS: NavItem[] = [
+  { href: '/dashboard/home', label: 'Home', icon: Home, roles: ['admin', 'waiter', 'cashier'] },
   { href: '/dashboard', label: 'Table View', icon: LayoutGrid, roles: ['admin', 'waiter', 'cashier'] },
-  { href: '/dashboard/orders', label: 'Orders', icon: ShoppingCart, roles: ['admin', 'waiter', 'cashier'] },
+  { href: '/dashboard/orders', label: 'New Order', icon: ShoppingCart, roles: ['admin', 'waiter', 'cashier'] },
   { href: '/dashboard/active-orders', label: 'Active Orders', icon: ClipboardList, roles: ['admin', 'waiter', 'cashier'] },
   { href: '/dashboard/menu', label: 'Menu Editor', icon: BookOpen, roles: ['admin'] },
   { href: '/dashboard/tables', label: 'Table Setup', icon: LayoutGrid, roles: ['admin'] },

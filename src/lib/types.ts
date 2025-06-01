@@ -17,7 +17,7 @@ export interface RestaurantTable {
   position?: { x: number; y: number }; // For visual table management
 }
 
-export type OrderType = 'Dine-in' | 'Takeout';
+export type OrderType = 'Dine-in' | 'Takeout' | 'Delivery';
 
 export interface OrderItemModifier {
   id: string;
