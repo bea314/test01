@@ -1,5 +1,5 @@
 
-import type { MenuItem, MenuItemCategory, User, UserRole, RestaurantTable, Order, DiscountPreset } from '@/lib/types';
+import type { MenuItem, MenuItemCategory, User, UserRole, RestaurantTable, Order, DiscountPreset, KitchenPrinter } from '@/lib/types';
 
 export let mockCategories: MenuItemCategory[] = [
   { id: "cat1", name: "Appetizers" },
@@ -37,7 +37,7 @@ export const deleteMockCategory = (id: string): boolean => {
 };
 
 
-export const initialMenuItems: MenuItem[] = [
+export let initialMenuItems: MenuItem[] = [
   {
     id: "item1",
     name: "Bruschetta",
@@ -158,7 +158,7 @@ export const initialMenuItems: MenuItem[] = [
 
 export const userRoles: UserRole[] = ['admin', 'cashier', 'waiter', 'kitchen'];
 
-export const initialStaff: User[] = [
+export let initialStaff: User[] = [
   { id: "staff1", name: "Alice Wonderland", email: "alice@krealiares.com", role: "admin" },
   { id: "staff2", name: "Bob The Builder", email: "bob@krealiares.com", role: "waiter" },
   { id: "staff3", name: "Charlie Chaplin", email: "charlie@krealiares.com", role: "cashier" },
@@ -166,7 +166,7 @@ export const initialStaff: User[] = [
   { id: "staff5", name: "Kevin Mitnick", email: "kevin@krealiares.com", role: "kitchen" },
 ];
 
-export const initialTables: RestaurantTable[] = [
+export let initialTables: RestaurantTable[] = [
   { id: "t1", name: "Main Table 1", status: "available", capacity: 4 },
   { id: "t2", name: "Window Seat 2", status: "occupied", capacity: 2, currentOrderId: "orderXYZ" },
   { id: "t3", name: "Patio Table A", status: "reserved", capacity: 6 },
@@ -174,7 +174,22 @@ export const initialTables: RestaurantTable[] = [
   { id: "t5", name: "Bar Seat 5", status: "available", capacity: 1 },
 ];
 
-export const mockActiveOrders: Order[] = [
+// Function to add an order to the mockActiveOrders array
+export const addActiveOrder = (newOrder: Order) => {
+  mockActiveOrders.unshift(newOrder); // Add to the beginning
+};
+
+// Function to update an existing order
+export const updateActiveOrder = (updatedOrder: Order) => {
+  const index = mockActiveOrders.findIndex(o => o.id === updatedOrder.id);
+  if (index !== -1) {
+    mockActiveOrders[index] = updatedOrder;
+  } else {
+    console.warn(`Order with ID ${updatedOrder.id} not found for update.`);
+  }
+};
+
+export let mockActiveOrders: Order[] = [
   {
     id: "order001",
     tableId: "t1",
@@ -182,14 +197,18 @@ export const mockActiveOrders: Order[] = [
     orderType: "Dine-in",
     numberOfGuests: 3,
     items: [
-      { id: "oi1", menuItemId: "item2", name: "Spaghetti Carbonara", quantity: 1, price: 18.00, modifiers: [], status: 'preparing', observations: "Extra cheese" },
-      { id: "oi2", menuItemId: "item7", name: "Iced Tea", quantity: 2, price: 3.50, modifiers: [], status: 'delivered' },
+      { id: "oi1", menuItemId: "item2", name: "Spaghetti Carbonara", quantity: 1, price: 18.00, modifiers: [], status: 'preparing', observations: "Extra cheese", assignedGuest: "Guest 1" },
+      { id: "oi2", menuItemId: "item7", name: "Iced Tea", quantity: 2, price: 3.50, modifiers: [], status: 'delivered', assignedGuest: "Guest 2" },
+      { id: "oi2b", menuItemId: "item7", name: "Iced Tea", quantity: 1, price: 3.50, modifiers: [], status: 'delivered', assignedGuest: "Guest 3" },
     ],
     status: "open",
-    subtotal: (18.00 * 1) + (3.50 * 2), taxAmount: ((18.00 * 1) + (3.50 * 2)) * 0.13, tipAmount: 0, discountAmount: 0,
-    totalAmount: ((18.00 * 1) + (3.50 * 2)) * 1.13,
+    subtotal: (18.00 * 1) + (3.50 * 3), taxAmount: ((18.00 * 1) + (3.50 * 3)) * 0.13, tipAmount: 0, discountAmount: 0,
+    totalAmount: ((18.00 * 1) + (3.50 * 3)) * 1.13,
     createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
     updatedAt: new Date().toISOString(),
+    isOnHold: false,
+    isCourtesy: false,
+    disableReceiptPrint: false,
   },
   {
     id: "order002",
@@ -212,7 +231,7 @@ export const mockActiveOrders: Order[] = [
     orderType: "Dine-in",
     numberOfGuests: 1,
     items: [
-      { id: "oi5", menuItemId: "item1", name: "Bruschetta", quantity: 1, price: 9.50, modifiers: [{id: 'mod1', name: 'Extra Tomatoes', priceAdjustment: 0}], status: 'pending' },
+      { id: "oi5", menuItemId: "item1", name: "Bruschetta", quantity: 1, price: 9.50, modifiers: [], status: 'pending' },
     ],
     status: "open",
     subtotal: 9.50, taxAmount: 9.50 * 0.13, tipAmount: 0, discountAmount: 0,
@@ -233,6 +252,22 @@ export const mockActiveOrders: Order[] = [
     totalAmount: ((8.99*2) + 9.75) * 1.13,
     createdAt: new Date(Date.now() - 16 * 60 * 1000).toISOString(), // Older order for KDS priority
     updatedAt: new Date().toISOString(),
+  },
+  { // Example occupied table order for t2
+    id: "orderXYZ",
+    tableId: "t2",
+    waiterId: "staff2",
+    orderType: "Dine-in",
+    numberOfGuests: 2,
+    items: [
+      { id: "oi8", menuItemId: "item8", name: "Caesar Salad", quantity: 1, price: 12.00, modifiers: [], status: 'preparing', assignedGuest: "Guest 1"},
+      { id: "oi9", menuItemId: "item7", name: "Iced Tea", quantity: 1, price: 3.50, modifiers: [], status: 'delivered', assignedGuest: "Guest 2"},
+    ],
+    status: "open",
+    subtotal: 12.00 + 3.50, taxAmount: (12.00 + 3.50) * 0.13, tipAmount: 3.00, discountAmount: 0,
+    totalAmount: (12.00 + 3.50) * 1.13 + 3.00,
+    createdAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+    updatedAt: new Date().toISOString(),
   }
 ];
 
@@ -241,3 +276,21 @@ export const mockPresetDiscounts: DiscountPreset[] = [
     { id: 'discount2', name: 'Happy Hour Special', percentage: 10, description: 'Valid on select items during happy hour.' },
     { id: 'discount3', name: 'VIP Customer', percentage: 5, description: 'For registered VIP customers.' },
 ];
+
+
+export let mockKitchenPrinters: KitchenPrinter[] = [
+    { id: "kp1", name: "Main Kitchen", ipAddress: "192.168.1.100" },
+    { id: "kp2", name: "Grill Station", ipAddress: "192.168.1.102" },
+];
+
+export const addMockKitchenPrinter = (name: string, ipAddress: string): KitchenPrinter => {
+  const newPrinter = { id: `kp${Date.now()}`, name, ipAddress };
+  mockKitchenPrinters.push(newPrinter);
+  return newPrinter;
+};
+
+export const removeMockKitchenPrinter = (id: string): boolean => {
+  const initialLength = mockKitchenPrinters.length;
+  mockKitchenPrinters = mockKitchenPrinters.filter(p => p.id !== id);
+  return mockKitchenPrinters.length < initialLength;
+};

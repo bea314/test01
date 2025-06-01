@@ -35,6 +35,7 @@ export interface OrderItem {
   specialInstructions?: string;
   observations?: string;
   status: 'pending' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
+  assignedGuest?: string; // New: For assigning item to a specific guest
 }
 
 export interface DTEInvoiceInfo {
@@ -65,6 +66,7 @@ export interface Order {
   createdAt: string;
   updatedAt: string;
   isCourtesy?: boolean;
+  isOnHold?: boolean; 
   disableReceiptPrint?: boolean;
   selectedDiscountId?: string;
   paymentSplitType?: PaymentSplitType;

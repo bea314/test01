@@ -1,7 +1,7 @@
 
 "use client";
 import { useState, useEffect, Suspense, useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,14 +10,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard, Users, Percent, WalletCards, CircleDollarSign, EyeOff, StickyNote, Hash } from "lucide-react";
+import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard, Users, Percent, WalletCards, CircleDollarSign, EyeOff, StickyNote, Hash, UserCheck, Send } from "lucide-react";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import type { OrderItem, MenuItem as MenuItemType, OrderType, Waiter, Order, AllergyTag, PaymentSplitType, DiscountPreset, RestaurantTable } from '@/lib/types';
 import { IVA_RATE, DEFAULT_TIP_PERCENTAGE } from '@/lib/constants';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
-import { initialMenuItems as mockMenuItemsAll, mockCategories as mockMenuCategories, initialStaff, mockPresetDiscounts, initialTables } from '@/lib/mock-data';
+import { initialMenuItems as mockMenuItemsAll, mockCategories as mockMenuCategories, initialStaff, mockPresetDiscounts, initialTables, addActiveOrder, updateActiveOrder, mockActiveOrders } from '@/lib/mock-data';
 import {
   Dialog,
   DialogContent,
@@ -44,14 +44,17 @@ type TipMode = 'default' | 'percentage' | 'manual';
 
 function OrdersPageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const initialOrderTypeParam = searchParams.get('type') as OrderType | null;
   const initialTableIdParam = searchParams.get('tableId') as string | null;
+  const checkoutOrderIdParam = searchParams.get('checkoutOrderId') as string | null;
+
   const { toast } = useToast();
 
   const [currentStep, setCurrentStep] = useState<OrderStep>('building');
   const [currentOrderItems, setCurrentOrderItems] = useState<OrderItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | 'all'>('all'); // Changed from undefined to 'all' for clarity
+  const [selectedCategory, setSelectedCategory] = useState<string | 'all'>('all');
   const [menuView, setMenuView] = useState<MenuView>('grid');
   
   const [orderType, setOrderType] = useState<OrderType>(initialOrderTypeParam || 'Dine-in');
@@ -76,48 +79,118 @@ function OrdersPageContent() {
   const [currentObservationText, setCurrentObservationText] = useState('');
 
   const [isCourtesy, setIsCourtesy] = useState(false);
-  const [isOnHold, setIsOnHold] = useState(false);
+  const [orderIsOnHold, setOrderIsOnHold] = useState(false); // Renamed to avoid conflict with Order.isOnHold
   const [disableReceiptPrint, setDisableReceiptPrint] = useState(false);
 
   const [paymentSplitType, setPaymentSplitType] = useState<PaymentSplitType>('none');
   const [paymentSplitWays, setPaymentSplitWays] = useState<number>(2);
   const [itemsToSplit, setItemsToSplit] = useState<Record<string, boolean>>({});
 
+  const [currentEditingOrderId, setCurrentEditingOrderId] = useState<string | null>(checkoutOrderIdParam);
+
 
   useEffect(() => {
     const typeParam = searchParams.get('type') as OrderType | null;
     const tableIdParam = searchParams.get('tableId') as string | null;
+    const checkoutOrderId = searchParams.get('checkoutOrderId') as string | null;
 
-    if (typeParam) {
-      setOrderType(typeParam);
-      if (typeParam !== 'Dine-in') {
-        setNumberOfGuests(undefined);
-        setSelectedTableId(undefined); // Clear table if not Dine-in
-      } else {
-        setNumberOfGuests(numberOfGuests === undefined ? 1 : numberOfGuests);
-        if (tableIdParam) {
-          setSelectedTableId(tableIdParam);
+    if (checkoutOrderId) {
+        const orderToCheckout = mockActiveOrders.find(o => o.id === checkoutOrderId);
+        if (orderToCheckout) {
+            setCurrentEditingOrderId(checkoutOrderId);
+            setCurrentOrderItems(orderToCheckout.items.map(item => ({...item}))); // Deep copy
+            setOrderType(orderToCheckout.orderType);
+            setSelectedWaiter(orderToCheckout.waiterId);
+            setSelectedTableId(orderToCheckout.tableId);
+            setNumberOfGuests(orderToCheckout.numberOfGuests);
+            setSelectedDiscountId(orderToCheckout.selectedDiscountId);
+            // Potentially load tip settings if saved with order
+            setIsCourtesy(orderToCheckout.isCourtesy || false);
+            setOrderIsOnHold(orderToCheckout.isOnHold || false);
+            setDisableReceiptPrint(orderToCheckout.disableReceiptPrint || false);
+            setCurrentStep('checkout');
+        } else {
+            toast({ title: "Error", description: `Order ${checkoutOrderId} not found for checkout.`, variant: "destructive" });
         }
-      }
-    } else { // Default to Dine-in if no type is specified
-        setOrderType('Dine-in');
-        setNumberOfGuests(numberOfGuests === undefined ? 1 : numberOfGuests);
-        if (tableIdParam) {
-          setSelectedTableId(tableIdParam);
+    } else {
+        if (typeParam) {
+          setOrderType(typeParam);
+          if (typeParam !== 'Dine-in') {
+            setNumberOfGuests(undefined);
+            setSelectedTableId(undefined); 
+          } else {
+            setNumberOfGuests(numberOfGuests === undefined ? 1 : numberOfGuests);
+            if (tableIdParam) setSelectedTableId(tableIdParam);
+          }
+        } else {
+            setOrderType('Dine-in');
+            setNumberOfGuests(numberOfGuests === undefined ? 1 : numberOfGuests);
+            if (tableIdParam) setSelectedTableId(tableIdParam);
         }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]); // Re-run when searchParams change
+  }, [searchParams, toast]); 
+
+  const resetOrderForm = () => {
+    setCurrentOrderItems([]);
+    setSearchTerm('');
+    setSelectedCategory('all');
+    setOrderType('Dine-in');
+    setSelectedTableId(undefined);
+    setNumberOfGuests(1);
+    setSelectedWaiter(initialStaff[0]?.id);
+    setTipMode('default');
+    setCustomTipPercentage(DEFAULT_TIP_PERCENTAGE);
+    setManualTipAmount(0);
+    setSelectedDiscountId(undefined);
+    setPaymentMethod(undefined);
+    setDteType('consumidor_final');
+    setDteNit('');
+    setDteNrc('');
+    setDteCustomerName('');
+    setIsCourtesy(false);
+    setOrderIsOnHold(false);
+    setDisableReceiptPrint(false);
+    setPaymentSplitType('none');
+    setPaymentSplitWays(2);
+    setItemsToSplit({});
+    setCurrentStep('building');
+    setCurrentEditingOrderId(null);
+    router.replace('/dashboard/orders'); // Clear query params
+  };
+
+  const updateItemGuestAssignment = (itemId: string, guest: string) => {
+    setCurrentOrderItems(prevItems => 
+      prevItems.map(item => 
+        item.id === itemId ? { ...item, assignedGuest: guest } : item
+      )
+    );
+  };
 
   const addItemToOrder = (menuItem: MenuItemType) => {
     setCurrentOrderItems(prevItems => {
-      const existingItem = prevItems.find(item => item.menuItemId === menuItem.id && !item.observations); 
-      if (existingItem) {
-        return prevItems.map(item =>
-          item.menuItemId === menuItem.id && !item.observations ? { ...item, quantity: item.quantity + 1 } : item
+      const existingItemIndex = prevItems.findIndex(item => 
+        item.menuItemId === menuItem.id && 
+        !item.observations && 
+        (!numberOfGuests || numberOfGuests <= 1 || !item.assignedGuest) // Only merge if not guest-assigned or single guest
+      );
+
+      if (existingItemIndex > -1 && (!numberOfGuests || numberOfGuests <=1)) {
+        return prevItems.map((item, index) =>
+          index === existingItemIndex ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
-      return [...prevItems, { id: Date.now().toString(), menuItemId: menuItem.id, name: menuItem.name, quantity: 1, price: menuItem.price, modifiers: [], status: 'pending', observations: '' }];
+      return [...prevItems, { 
+        id: `temp-${Date.now().toString()}`, 
+        menuItemId: menuItem.id, 
+        name: menuItem.name, 
+        quantity: 1, 
+        price: menuItem.price, 
+        modifiers: [], 
+        status: 'pending', 
+        observations: '',
+        assignedGuest: numberOfGuests && numberOfGuests > 1 ? 'Guest 1' : undefined // Default for multi-guest
+      }];
     });
   };
 
@@ -184,23 +257,63 @@ function OrdersPageContent() {
     item.availability === 'available'
   ).filter(item => selectedCategory !== 'all' ? item.category.id === selectedCategory : true);
 
-  const handleProceedToCheckout = () => {
+  const handleFinalizeAndSendToKitchen = () => {
     if (currentOrderItems.length === 0) {
-        toast({ title: "Empty Order", description: "Please add items to the order before proceeding.", variant: "destructive" });
+        toast({ title: "Empty Order", description: "Please add items to the order.", variant: "destructive" });
         return;
     }
-    if (isOnHold) {
-        toast({ title: "Order on Hold", description: "This order is currently on hold. Resolve hold status to proceed.", variant: "destructive" });
+    if (!selectedWaiter) {
+        toast({ title: "Waiter Required", description: "Please assign a waiter to the order.", variant: "destructive" });
         return;
     }
-     if (orderType === 'Dine-in' && !selectedTableId) {
+    if (orderType === 'Dine-in' && !selectedTableId) {
       toast({ title: "Table Required", description: "Please select a table for this Dine-in order.", variant: "destructive" });
       return;
     }
-    setCurrentStep('checkout');
-  }
 
-  const handleFinalizeAndPay = () => {
+    const newOrderId = `order${Date.now()}`;
+    const newOrder: Order = {
+        id: newOrderId,
+        items: currentOrderItems.map(item => ({...item, id: `oi-${newOrderId}-${item.menuItemId}-${Math.random().toString(36).substring(7)}`})), // Ensure unique IDs for items in the new order
+        orderType,
+        waiterId: selectedWaiter,
+        tableId: orderType === 'Dine-in' ? selectedTableId : undefined,
+        numberOfGuests: orderType === 'Dine-in' ? numberOfGuests : undefined,
+        status: orderIsOnHold ? 'on_hold' : 'open',
+        subtotal,
+        discountAmount,
+        taxAmount,
+        tipAmount,
+        totalAmount,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isCourtesy,
+        isOnHold: orderIsOnHold,
+        disableReceiptPrint,
+        selectedDiscountId,
+        dteType: dteType, // will be finalized in checkout
+        paymentMethod: paymentMethod, // will be finalized in checkout
+    };
+
+    addActiveOrder(newOrder);
+    toast({ title: "Order Sent to Kitchen (Mock)", description: `Order #${newOrderId.slice(-6)} created and sent.` });
+
+    if (orderType === 'Dine-in' && selectedTableId) {
+        const tableIndex = initialTables.findIndex(t => t.id === selectedTableId);
+        if (tableIndex > -1) {
+            initialTables[tableIndex].status = 'occupied';
+            initialTables[tableIndex].currentOrderId = newOrderId;
+        }
+    }
+    resetOrderForm();
+    router.push(`/dashboard/active-orders/${newOrderId}`);
+  };
+
+  const handleFinalizePayment = () => {
+    if (!currentEditingOrderId) {
+        toast({ title: "Error", description: "No active order selected for payment.", variant: "destructive" });
+        return;
+    }
     if (!paymentMethod && !isCourtesy) {
         toast({ title: "Payment Method Required", description: "Please select a payment method.", variant: "destructive" });
         return;
@@ -210,38 +323,69 @@ function OrdersPageContent() {
         return;
     }
     
-    let message = "Order Finalized (Mock)!";
+    const orderToUpdate = mockActiveOrders.find(o => o.id === currentEditingOrderId);
+    if (!orderToUpdate) {
+         toast({ title: "Error", description: `Order ${currentEditingOrderId} not found for payment.`, variant: "destructive" });
+        return;
+    }
+
+    const updatedOrder: Order = {
+        ...orderToUpdate,
+        items: currentOrderItems, // Use current items as they might have changes (though ideally not in checkout step)
+        status: isCourtesy ? 'completed' : orderIsOnHold ? 'on_hold' : 'paid',
+        paymentMethod,
+        dteType,
+        dteInvoiceInfo: dteType === 'credito_fiscal' ? { nit: dteNit, nrc: dteNrc, customerName: dteCustomerName } : undefined,
+        tipAmount, // Recalculated
+        discountAmount, // Recalculated
+        selectedDiscountId,
+        totalAmount, // Recalculated
+        subtotal, // Recalculated
+        taxAmount, // Recalculated
+        isCourtesy,
+        isOnHold: orderIsOnHold, // Ensure this is the order-level hold status
+        disableReceiptPrint,
+        updatedAt: new Date().toISOString(),
+    };
+    
+    updateActiveOrder(updatedOrder);
+
+    let message = `Order #${currentEditingOrderId.slice(-6)} finalized.`;
     if (paymentSplitType !== 'none') {
         message += ` Payment split: ${paymentSplitType}`;
         if (paymentSplitType === 'equal') message += ` into ${paymentSplitWays} ways.`;
     }
-     if (isCourtesy) message = "Order Marked as Courtesy (Mock)!";
-     if (isOnHold) message = "Order status set to On Hold (Mock)!";
+    if (isCourtesy) message = `Order #${currentEditingOrderId.slice(-6)} Marked as Courtesy.`;
+    else if (orderIsOnHold) message = `Order #${currentEditingOrderId.slice(-6)} status set to On Hold.`;
 
-    toast({ title: "Order Processed", description: message });
-    // Reset state for a new order or redirect
-    // setCurrentOrderItems([]);
-    // setCurrentStep('building');
-    // etc.
-  };
 
-  const handleSendToKitchen = () => {
-    if (currentOrderItems.length === 0) {
-        toast({ title: "Empty Order", description: "Cannot send an empty order to the kitchen.", variant: "destructive" });
-        return;
+    toast({ title: "Payment Processed", description: message });
+    
+    if (orderType === 'Dine-in' && selectedTableId && (updatedOrder.status === 'paid' || updatedOrder.status === 'completed' || updatedOrder.status === 'cancelled')) {
+        const tableIndex = initialTables.findIndex(t => t.id === selectedTableId);
+        if (tableIndex > -1 && initialTables[tableIndex].currentOrderId === currentEditingOrderId) {
+            initialTables[tableIndex].status = 'available'; // Or 'needs_cleaning'
+            initialTables[tableIndex].currentOrderId = undefined;
+        }
     }
-    toast({ title: "Order Sent", description: "Order sent to kitchen (Mock)." });
+
+    resetOrderForm(); // Resets the form and clears currentEditingOrderId
+    router.push('/dashboard/active-orders');
   };
+
 
   return (
     <div className="container mx-auto py-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-headline font-bold text-foreground">
-          {currentStep === 'building' ? 'Build Your Order' : 'Checkout & Payment'}
+          {currentStep === 'building' ? 'Build New Order' : `Checkout: Order #${currentEditingOrderId?.slice(-6) || 'New'}`}
         </h1>
         {currentStep === 'checkout' && (
-            <Button variant="outline" onClick={() => setCurrentStep('building')}>
-                <ArrowLeft className="mr-2 h-4 w-4" /> Back to Edit Order
+            <Button variant="outline" onClick={() => { 
+              if(currentEditingOrderId) router.push(`/dashboard/active-orders/${currentEditingOrderId}`); else resetOrderForm();
+            }}>
+                <ArrowLeft className="mr-2 h-4 w-4" /> 
+                {currentEditingOrderId ? "Back to Active Order" : "Cancel Checkout & Start New"}
             </Button>
         )}
       </div>
@@ -302,7 +446,7 @@ function OrdersPageContent() {
                         type="number" 
                         value={numberOfGuests || ''} 
                         onChange={e => setNumberOfGuests(e.target.value ? parseInt(e.target.value) : undefined)} 
-                        placeholder="e.g., 4"
+                        placeholder="e.g., 1"
                         min="1"
                         className="h-9"
                     />
@@ -310,58 +454,78 @@ function OrdersPageContent() {
                 </div>
               )}
             </CardHeader>
-            <ScrollArea className="h-[calc(100vh-36rem)] lg:h-[calc(100vh-30rem)]"> 
+            <ScrollArea className="h-[calc(100vh-36rem)] lg:h-[calc(100vh-32rem)]"> 
               <CardContent className="flex flex-col justify-between ">
                   <ScrollArea className="flex-grow h-[280px] pr-2 mb-4">
                   {currentOrderItems.length === 0 ? (
                       <p className="text-muted-foreground text-center py-10">No items in order.</p>
                   ) : (
                       currentOrderItems.map(item => (
-                      <div key={item.id} className="flex justify-between items-start py-2 border-b border-border last:border-b-0">
-                          <div>
-                          <p className="font-semibold">{item.name}</p>
-                          <p className="text-xs text-muted-foreground">${item.price.toFixed(2)} x {item.quantity}</p>
-                          {item.observations && <p className="text-xs text-blue-500 mt-1">Notes: {item.observations}</p>}
-                          </div>
-                          <div className="flex items-center gap-1">
-                          <Input 
-                              type="number" 
-                              value={item.quantity}
-                              onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value))}
-                              className="w-16 h-8 text-center"
-                              min="0"
-                              aria-label={`Quantity for ${item.name}`}
-                          />
-                          <Dialog open={editingObservationItem?.id === item.id} onOpenChange={(open) => { if(!open) setEditingObservationItem(null); }}>
-                            <DialogTrigger asChild>
-                              <Button variant="ghost" size="icon" onClick={() => { setEditingObservationItem(item); setCurrentObservationText(item.observations || '');}} aria-label={`Edit observations for ${item.name}`}>
-                                  <MessageSquare className="h-4 w-4" />
-                              </Button>
-                            </DialogTrigger>
-                             <DialogContent>
-                                <DialogHeader>
-                                  <DialogTitle>Add/Edit Observations for {item.name}</DialogTitle>
-                                  <DialogDescription>
-                                    Enter any special notes or observations for this item.
-                                  </DialogDescription>
-                                </DialogHeader>
-                                <Textarea
-                                  value={currentObservationText}
-                                  onChange={(e) => setCurrentObservationText(e.target.value)}
-                                  placeholder="e.g., Extra spicy, no onions, etc."
-                                  rows={4}
-                                  className="my-4"
-                                />
-                                <DialogFooter>
-                                  <Button variant="outline" onClick={() => setEditingObservationItem(null) }>Cancel</Button>
-                                  <Button onClick={handleSaveObservation}>Save Observations</Button>
-                                </DialogFooter>
-                              </DialogContent>
-                          </Dialog>
-                          <Button variant="ghost" size="icon" onClick={() => removeItemFromOrder(item.id)} aria-label={`Remove ${item.name}`}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                          </div>
+                      <div key={item.id} className="py-2 border-b border-border last:border-b-0">
+                        <div className="flex justify-between items-start">
+                            <div>
+                            <p className="font-semibold">{item.name}</p>
+                            <p className="text-xs text-muted-foreground">${item.price.toFixed(2)} x {item.quantity}</p>
+                            {item.observations && <p className="text-xs text-blue-500 mt-1">Notes: {item.observations}</p>}
+                            </div>
+                            <div className="flex items-center gap-1">
+                            <Input 
+                                type="number" 
+                                value={item.quantity}
+                                onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value))}
+                                className="w-16 h-8 text-center"
+                                min="0"
+                                aria-label={`Quantity for ${item.name}`}
+                            />
+                            <Dialog open={editingObservationItem?.id === item.id} onOpenChange={(open) => { if(!open) setEditingObservationItem(null); }}>
+                              <DialogTrigger asChild>
+                                <Button variant="ghost" size="icon" onClick={() => { setEditingObservationItem(item); setCurrentObservationText(item.observations || '');}} aria-label={`Edit observations for ${item.name}`}>
+                                    <MessageSquare className="h-4 w-4" />
+                                </Button>
+                              </DialogTrigger>
+                               <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Add/Edit Observations for {item.name}</DialogTitle>
+                                    <DialogDescription>
+                                      Enter any special notes or observations for this item.
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <Textarea
+                                    value={currentObservationText}
+                                    onChange={(e) => setCurrentObservationText(e.target.value)}
+                                    placeholder="e.g., Extra spicy, no onions, etc."
+                                    rows={4}
+                                    className="my-4"
+                                  />
+                                  <DialogFooter>
+                                    <Button variant="outline" onClick={() => setEditingObservationItem(null) }>Cancel</Button>
+                                    <Button onClick={handleSaveObservation}>Save Observations</Button>
+                                  </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                            <Button variant="ghost" size="icon" onClick={() => removeItemFromOrder(item.id)} aria-label={`Remove ${item.name}`}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                            </div>
+                        </div>
+                        {numberOfGuests && numberOfGuests > 1 && (
+                            <div className="mt-1.5 flex items-center gap-2">
+                                <Label htmlFor={`guest-assign-${item.id}`} className="text-xs">Guest:</Label>
+                                <Select 
+                                    value={item.assignedGuest || `Guest 1`}
+                                    onValueChange={(value) => updateItemGuestAssignment(item.id, value)}
+                                >
+                                    <SelectTrigger id={`guest-assign-${item.id}`} className="h-7 text-xs w-28">
+                                        <SelectValue placeholder="Assign Guest" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {Array.from({ length: numberOfGuests }, (_, i) => (
+                                            <SelectItem key={`guest-${i+1}`} value={`Guest ${i+1}`}>Guest {i+1}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
                       </div>
                       ))
                   )}
@@ -376,10 +540,9 @@ function OrdersPageContent() {
               </CardContent>
             </ScrollArea>
             <CardFooter className="flex-col gap-2 mt-auto border-t pt-4">
-               <Button className="w-full" size="lg" onClick={handleProceedToCheckout} disabled={isOnHold && currentStep === 'building'}>
-                  Proceed to Checkout <ArrowRight className="ml-2 h-5 w-5" />
+               <Button className="w-full" size="lg" onClick={handleFinalizeAndSendToKitchen} disabled={orderIsOnHold && currentStep === 'building'}>
+                  Finalize & Send to Kitchen <Send className="ml-2 h-5 w-5" />
                </Button>
-               <Button variant="outline" className="w-full" onClick={handleSendToKitchen}>Send to Kitchen (Mock)</Button>
             </CardFooter>
           </Card>
           
@@ -515,7 +678,7 @@ function OrdersPageContent() {
          <Card className="shadow-xl max-w-3xl mx-auto">
             <CardHeader>
                 <CardTitle className="font-headline flex items-center"><CreditCard className="mr-2 h-5 w-5"/>Payment Details</CardTitle>
-                <CardDescription>Review your order and complete the payment.</CardDescription>
+                <CardDescription>Review order #{currentEditingOrderId?.slice(-6)} and complete the payment.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
                 <div>
@@ -524,7 +687,7 @@ function OrdersPageContent() {
                         {currentOrderItems.map(item => (
                             <div key={item.id} className="flex justify-between items-start py-1.5 border-b last:border-b-0">
                                 <div>
-                                    <p className="font-medium">{item.quantity}x {item.name}</p>
+                                    <p className="font-medium">{item.quantity}x {item.name} {item.assignedGuest && <span className="text-xs text-muted-foreground">({item.assignedGuest})</span>}</p>
                                     <p className="text-xs text-muted-foreground">${(item.price * item.quantity).toFixed(2)}</p>
                                     {item.observations && <p className="text-xs text-blue-500 mt-0.5">Notes: {item.observations}</p>}
                                 </div>
@@ -600,7 +763,6 @@ function OrdersPageContent() {
                             <SelectItem value="none">No Split</SelectItem>
                             <SelectItem value="equal">Split Equally</SelectItem>
                             <SelectItem value="by_item">Split by Item</SelectItem>
-                            {/* <SelectItem value="by_customer_bill">Split by Customer Bill (Concept)</SelectItem> */}
                         </SelectContent>
                     </Select>
                     {paymentSplitType === 'equal' && (
@@ -661,11 +823,10 @@ function OrdersPageContent() {
                             <Checkbox id="isCourtesy" checked={isCourtesy} onCheckedChange={(checked) => {
                                 setIsCourtesy(!!checked); 
                                 if(!!checked) {
-                                    setSelectedDiscountId(undefined); // Clear any other discount
-                                    setTipMode('default'); // Reset tip
+                                    setSelectedDiscountId(undefined); 
+                                    setTipMode('default'); 
                                     setManualTipAmount(0); 
                                     setCustomTipPercentage(DEFAULT_TIP_PERCENTAGE);
-                                    // Payment method can be cleared or disabled
                                     setPaymentMethod(undefined);
                                     setPaymentSplitType('none');
                                 }
@@ -673,7 +834,7 @@ function OrdersPageContent() {
                             <Label htmlFor="isCourtesy" className="flex items-center"><CircleDollarSign className="mr-1 h-4 w-4 text-green-500"/>Mark as Courtesy</Label>
                         </div>
                         <div className="flex items-center space-x-2">
-                            <Checkbox id="isOnHold" checked={isOnHold} onCheckedChange={(checked) => setIsOnHold(!!checked)} />
+                            <Checkbox id="isOnHold" checked={orderIsOnHold} onCheckedChange={(checked) => setOrderIsOnHold(!!checked)} />
                             <Label htmlFor="isOnHold" className="flex items-center"><WalletCards className="mr-1 h-4 w-4 text-yellow-500"/>Hold Bill</Label>
                         </div>
                          <div className="flex items-center space-x-2">
@@ -684,8 +845,8 @@ function OrdersPageContent() {
                 </div>
             </CardContent>
             <CardFooter className="border-t pt-4">
-                 <Button className="w-full" size="lg" onClick={handleFinalizeAndPay} disabled={isOnHold && !isCourtesy /* Allow finalizing courtesy order even if on hold */}>
-                    <Save className="mr-2 h-5 w-5" /> {isCourtesy ? "Finalize as Courtesy" : isOnHold ? "Order is ON HOLD" : "Finalize & Pay"}
+                 <Button className="w-full" size="lg" onClick={handleFinalizePayment} disabled={orderIsOnHold && !isCourtesy && currentStep === 'checkout'}>
+                    <Save className="mr-2 h-5 w-5" /> {isCourtesy ? "Finalize as Courtesy" : orderIsOnHold ? "Order is ON HOLD" : "Finalize & Pay"}
                  </Button>
             </CardFooter>
          </Card>

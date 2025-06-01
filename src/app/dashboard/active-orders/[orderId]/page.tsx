@@ -8,10 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, User, Tag, Hash, Clock, Calendar, CreditCard, Percent, DollarSign, Receipt, Info, Utensils, Loader2, AlertTriangle, Users, CheckCircle } from "lucide-react";
-import type { Order, OrderItem } from '@/lib/types';
-import { mockActiveOrders, initialStaff, initialTables } from '@/lib/mock-data';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ArrowLeft, User, Tag, Hash, Clock, Calendar, CreditCard, Percent, DollarSign, Receipt, Info, Utensils, Loader2, AlertTriangle, Users, CheckCircle, Edit3, Save, ShoppingBag, CircleDollarSign, WalletCards, EyeOff } from "lucide-react";
+import type { Order, OrderItem, RestaurantTable } from '@/lib/types';
+import { mockActiveOrders, initialStaff, initialTables, updateActiveOrder } from '@/lib/mock-data';
 import { IVA_RATE } from '@/lib/constants';
+import { useToast } from '@/hooks/use-toast';
 
 const OrderStatusBadgeFull = ({ status }: { status: Order['status'] }) => {
   switch (status) {
@@ -30,14 +35,33 @@ export default function OrderDetailsPage() {
   const router = useRouter();
   const params = useParams();
   const orderId = params.orderId as string;
+  const { toast } = useToast();
 
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+
+  // Editable fields
+  const [editableTableId, setEditableTableId] = useState<string | undefined>(undefined);
+  const [editableNumberOfGuests, setEditableNumberOfGuests] = useState<number | undefined>(undefined);
+  const [editableIsCourtesy, setEditableIsCourtesy] = useState(false);
+  const [editableIsOnHold, setEditableIsOnHold] = useState(false);
+  const [editableDisableReceiptPrint, setEditableDisableReceiptPrint] = useState(false);
+
 
   useEffect(() => {
     if (orderId) {
       const foundOrder = mockActiveOrders.find(o => o.id === orderId);
-      setOrder(foundOrder || null);
+      if (foundOrder) {
+        setOrder(JSON.parse(JSON.stringify(foundOrder))); // Deep copy for local editing
+        setEditableTableId(foundOrder.tableId);
+        setEditableNumberOfGuests(foundOrder.numberOfGuests);
+        setEditableIsCourtesy(foundOrder.isCourtesy || false);
+        setEditableIsOnHold(foundOrder.isOnHold || false);
+        setEditableDisableReceiptPrint(foundOrder.disableReceiptPrint || false);
+      } else {
+        setOrder(null);
+      }
       setIsLoading(false);
     }
   }, [orderId]);
@@ -53,6 +77,55 @@ export default function OrderDetailsPage() {
     const table = initialTables.find(t => t.id === tableId);
     return table ? table.name : tableId;
   };
+
+  const handleSaveChanges = () => {
+    if (!order) return;
+
+    const originalTableId = mockActiveOrders.find(o => o.id === order.id)?.tableId;
+
+    const updatedOrderData: Order = {
+        ...order,
+        tableId: editableTableId,
+        numberOfGuests: editableNumberOfGuests,
+        isCourtesy: editableIsCourtesy,
+        isOnHold: editableIsOnHold,
+        status: editableIsOnHold ? 'on_hold' : order.status === 'on_hold' ? 'open' : order.status, // Revert from on_hold if unchecked
+        disableReceiptPrint: editableDisableReceiptPrint,
+        updatedAt: new Date().toISOString(),
+    };
+    
+    updateActiveOrder(updatedOrderData); // Update in mock data source
+    setOrder(updatedOrderData); // Update local state
+
+    // Update table status if table changed
+    if (originalTableId !== editableTableId) {
+        if (originalTableId) {
+            const oldTableIndex = initialTables.findIndex(t => t.id === originalTableId);
+            if (oldTableIndex > -1) {
+                initialTables[oldTableIndex].status = 'available';
+                initialTables[oldTableIndex].currentOrderId = undefined;
+            }
+        }
+        if (editableTableId && updatedOrderData.orderType === 'Dine-in' && (updatedOrderData.status === 'open' || updatedOrderData.status === 'on_hold' || updatedOrderData.status === 'pending_payment')) {
+            const newTableIndex = initialTables.findIndex(t => t.id === editableTableId);
+            if (newTableIndex > -1) {
+                initialTables[newTableIndex].status = 'occupied';
+                initialTables[newTableIndex].currentOrderId = order.id;
+            }
+        }
+    }
+
+
+    toast({ title: "Changes Saved", description: `Order #${order.id.slice(-6)} has been updated.` });
+    setIsEditing(false);
+  };
+  
+  const handleProceedToCheckout = () => {
+    if (order) {
+      router.push(`/dashboard/orders?checkoutOrderId=${order.id}`);
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -75,16 +148,44 @@ export default function OrderDetailsPage() {
       </div>
     );
   }
+  
+  const canEditOrder = order.status === 'open' || order.status === 'on_hold' || order.status === 'pending_payment';
+
 
   return (
     <div className="container mx-auto py-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-headline font-bold text-foreground">Order Details #{order.id.slice(-6)}</h1>
-        <Button variant="outline" asChild>
-          <Link href="/dashboard/active-orders">
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Active Orders
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+            {canEditOrder && !isEditing && (
+                 <Button variant="outline" onClick={() => setIsEditing(true)}>
+                    <Edit3 className="mr-2 h-4 w-4" /> Modify Order
+                </Button>
+            )}
+            {isEditing && (
+                 <Button variant="default" onClick={handleSaveChanges}>
+                    <Save className="mr-2 h-4 w-4" /> Save Changes
+                </Button>
+            )}
+            {isEditing && (
+                 <Button variant="ghost" onClick={() => {
+                    setIsEditing(false);
+                    // Reset editable fields to original order state
+                    setEditableTableId(order.tableId);
+                    setEditableNumberOfGuests(order.numberOfGuests);
+                    setEditableIsCourtesy(order.isCourtesy || false);
+                    setEditableIsOnHold(order.isOnHold || false);
+                    setEditableDisableReceiptPrint(order.disableReceiptPrint || false);
+                 }}>
+                    Cancel Edit
+                </Button>
+            )}
+            <Button variant="outline" asChild>
+            <Link href="/dashboard/active-orders">
+                <ArrowLeft className="mr-2 h-4 w-4" /> Back to Active Orders
+            </Link>
+            </Button>
+        </div>
       </div>
 
       <Card className="shadow-xl">
@@ -112,41 +213,71 @@ export default function OrderDetailsPage() {
             {order.orderType === "Dine-in" && (
               <>
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Table</p>
-                  <p className="font-medium flex items-center"><Hash className="mr-2 h-4 w-4 text-primary" />{getTableName(order.tableId)}</p>
+                  <Label htmlFor="editableTableId" className="text-xs text-muted-foreground">Table</Label>
+                  {isEditing ? (
+                    <Select value={editableTableId} onValueChange={setEditableTableId} disabled={!isEditing}>
+                        <SelectTrigger id="editableTableId" aria-label="Select Table">
+                            <SelectValue placeholder="Select Table" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {initialTables.filter(t => t.status === 'available' || t.id === editableTableId).map(table => (
+                                <SelectItem key={table.id} value={table.id}>{table.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className="font-medium flex items-center"><Hash className="mr-2 h-4 w-4 text-primary" />{getTableName(order.tableId)}</p>
+                  )}
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Guests</p>
-                  <p className="font-medium flex items-center"><Users className="mr-2 h-4 w-4 text-primary" />{order.numberOfGuests || 'N/A'}</p>
+                  <Label htmlFor="editableNumberOfGuests" className="text-xs text-muted-foreground">Guests</Label>
+                  {isEditing ? (
+                    <Input 
+                        id="editableNumberOfGuests" 
+                        type="number" 
+                        value={editableNumberOfGuests || ''} 
+                        onChange={e => setEditableNumberOfGuests(e.target.value ? parseInt(e.target.value) : undefined)} 
+                        min="1"
+                        className="h-9"
+                        disabled={!isEditing}
+                    />
+                  ) : (
+                    <p className="font-medium flex items-center"><Users className="mr-2 h-4 w-4 text-primary" />{order.numberOfGuests || 'N/A'}</p>
+                  )}
                 </div>
               </>
             )}
           </div>
 
           <Separator />
+            <div>
+                <h4 className="font-semibold text-lg mb-3 flex items-center"><Utensils className="mr-2 h-5 w-5 text-primary"/>Items Ordered</h4>
+                {isEditing && (
+                    <Button variant="outline" size="sm" className="mb-3" disabled>
+                        <PlusCircle className="mr-2 h-4 w-4"/> Add More Items (Placeholder)
+                    </Button>
+                )}
+                <ScrollArea className="max-h-60 border rounded-md">
+                <ul className="divide-y">
+                    {order.items.map(item => (
+                    <li key={item.id} className="p-3">
+                        <div className="flex justify-between items-start">
+                        <div>
+                            <p className="font-medium">{item.quantity}x {item.name} {item.assignedGuest && <span className="text-xs text-muted-foreground">({item.assignedGuest})</span>}</p>
+                            <p className="text-xs text-muted-foreground">Unit Price: ${item.price.toFixed(2)}</p>
+                        </div>
+                        <p className="font-semibold text-primary">${(item.quantity * item.price).toFixed(2)}</p>
+                        </div>
+                        {item.observations && (
+                        <p className="text-xs text-blue-500 mt-1 italic">Notes: "{item.observations}"</p>
+                        )}
+                        <Badge variant="outline" className="mt-1 text-xs">{item.status}</Badge>
+                    </li>
+                    ))}
+                </ul>
+                </ScrollArea>
+            </div>
 
-          <div>
-            <h4 className="font-semibold text-lg mb-3 flex items-center"><Utensils className="mr-2 h-5 w-5 text-primary"/>Items Ordered</h4>
-            <ScrollArea className="max-h-60 border rounded-md">
-              <ul className="divide-y">
-                {order.items.map(item => (
-                  <li key={item.id} className="p-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-medium">{item.quantity}x {item.name}</p>
-                        <p className="text-xs text-muted-foreground">Unit Price: ${item.price.toFixed(2)}</p>
-                      </div>
-                      <p className="font-semibold text-primary">${(item.quantity * item.price).toFixed(2)}</p>
-                    </div>
-                    {item.observations && (
-                      <p className="text-xs text-blue-500 mt-1 italic">Notes: "{item.observations}"</p>
-                    )}
-                    <Badge variant="outline" className="mt-1 text-xs">{item.status}</Badge>
-                  </li>
-                ))}
-              </ul>
-            </ScrollArea>
-          </div>
 
           <Separator />
 
@@ -167,8 +298,6 @@ export default function OrderDetailsPage() {
               <h4 className="font-semibold text-lg mb-2 flex items-center"><CreditCard className="mr-2 h-5 w-5 text-primary"/>Payment & DTE</h4>
               <div className="text-sm space-y-1">
                 <div className="flex justify-between"><span>Payment Method:</span> <span className="capitalize">{order.paymentMethod?.replace('_', ' ') || 'N/A'}</span></div>
-                {order.isCourtesy && <p className="text-green-600 font-medium">This order was marked as courtesy.</p>}
-                {order.disableReceiptPrint && <p className="text-orange-600 font-medium">Receipt printing opted out for this order.</p>}
                 <Separator className="my-2"/>
                 <p className="text-xs text-muted-foreground">DTE Type</p>
                 <p className="font-medium capitalize">{order.dteType?.replace('_', ' ') || 'Consumidor Final'}</p>
@@ -182,10 +311,37 @@ export default function OrderDetailsPage() {
               </div>
             </div>
           </div>
+           {isEditing && (
+            <>
+                <Separator/>
+                <div className="space-y-3">
+                    <Label className="font-headline">Order Actions</Label>
+                    <div className="flex flex-wrap gap-4 items-center">
+                        <div className="flex items-center space-x-2">
+                            <Checkbox id="editableIsCourtesy" checked={editableIsCourtesy} onCheckedChange={(checked) => setEditableIsCourtesy(!!checked)} disabled={!isEditing} />
+                            <Label htmlFor="editableIsCourtesy" className="flex items-center"><CircleDollarSign className="mr-1 h-4 w-4 text-green-500"/>Mark as Courtesy</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <Checkbox id="editableIsOnHold" checked={editableIsOnHold} onCheckedChange={(checked) => setEditableIsOnHold(!!checked)} disabled={!isEditing} />
+                            <Label htmlFor="editableIsOnHold" className="flex items-center"><WalletCards className="mr-1 h-4 w-4 text-yellow-500"/>Hold Bill</Label>
+                        </div>
+                         <div className="flex items-center space-x-2">
+                            <Checkbox id="editableDisableReceiptPrint" checked={editableDisableReceiptPrint} onCheckedChange={(checked) => setEditableDisableReceiptPrint(!!checked)} disabled={!isEditing} />
+                            <Label htmlFor="editableDisableReceiptPrint" className="flex items-center"><EyeOff className="mr-1 h-4 w-4"/>No Receipt Print</Label>
+                        </div>
+                    </div>
+                </div>
+            </>
+           )}
 
         </CardContent>
-        <CardFooter className="border-t pt-4 flex justify-end">
-          <Button variant="outline">Print Receipt (Mock)</Button>
+        <CardFooter className="border-t pt-4 flex justify-end items-center gap-3">
+          <Button variant="outline" onClick={() => alert("Mock: Printing Receipt...")}>Print Receipt (Mock)</Button>
+           {(order.status === 'open' || order.status === 'on_hold' || order.status === 'pending_payment') && !isEditing && (
+            <Button onClick={handleProceedToCheckout}>
+                Proceed to Checkout <ArrowRight className="ml-2 h-4 w-4"/>
+            </Button>
+          )}
         </CardFooter>
       </Card>
     </div>
