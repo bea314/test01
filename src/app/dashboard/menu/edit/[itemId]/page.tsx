@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Save, UploadCloud, ArrowLeft, Loader2 } from "lucide-react";
-import type { MenuItem as MenuItemType, AllergyTag } from '@/lib/types';
+import type { MenuItem as MenuItemType, AllergyTag, MenuItemCategory } from '@/lib/types';
 import { ALLERGY_TAG_OPTIONS } from '@/lib/types';
 import { initialMenuItems, mockCategories } from '@/lib/mock-data';
 import Link from 'next/link';
@@ -26,14 +26,17 @@ export default function EditMenuItemPage() {
   const [itemName, setItemName] = useState('');
   const [itemDescription, setItemDescription] = useState('');
   const [itemPrice, setItemPrice] = useState('');
-  const [itemCategory, setItemCategory] = useState<string | undefined>(undefined);
+  const [itemCategoryId, setItemCategoryId] = useState<string | undefined>(undefined);
   const [itemAvailability, setItemAvailability] = useState<'available' | 'unavailable'>('available');
   const [itemNumber, setItemNumber] = useState('');
   const [itemImageUrl, setItemImageUrl] = useState('');
   const [itemAllergiesNotes, setItemAllergiesNotes] = useState('');
   const [itemAllergyTags, setItemAllergyTags] = useState<AllergyTag[]>([]);
 
+  const [categories, setCategories] = useState<MenuItemCategory[]>([]);
+
   useEffect(() => {
+    setCategories(mockCategories); // Load categories
     if (itemId) {
       const itemToEdit = initialMenuItems.find(item => item.id === itemId);
       if (itemToEdit) {
@@ -41,7 +44,7 @@ export default function EditMenuItemPage() {
         setItemName(itemToEdit.name);
         setItemDescription(itemToEdit.description);
         setItemPrice(itemToEdit.price.toString());
-        setItemCategory(itemToEdit.category.id);
+        setItemCategoryId(itemToEdit.category.id);
         setItemAvailability(itemToEdit.availability);
         setItemNumber(itemToEdit.number || '');
         setItemImageUrl(itemToEdit.imageUrl || '');
@@ -65,7 +68,7 @@ export default function EditMenuItemPage() {
     e.preventDefault();
     if (!menuItem) return;
 
-    const selectedCat = mockCategories.find(cat => cat.id === itemCategory);
+    const selectedCat = categories.find(cat => cat.id === itemCategoryId);
     if (!selectedCat) {
         alert("Please select a category.");
         return;
@@ -86,7 +89,12 @@ export default function EditMenuItemPage() {
     };
 
     console.log("Updating menu item (mock):", updatedItem);
-    alert("Menu item updated (mock)! Check console. Data changes will not persist back to the list in this prototype.");
+    // Update initialMenuItems for mock persistence (demonstration only)
+    const itemIndex = initialMenuItems.findIndex(item => item.id === itemId);
+    if (itemIndex > -1) {
+      initialMenuItems[itemIndex] = updatedItem;
+    }
+    alert("Menu item updated (mock)! Check console. Data changes will not persist back to the list in this prototype across page reloads unless mock data is statefully managed.");
     router.push('/dashboard/menu');
   };
   
@@ -146,10 +154,10 @@ export default function EditMenuItemPage() {
             </div>
             <div>
               <Label htmlFor="itemCategory">Category</Label>
-              <Select value={itemCategory} onValueChange={setItemCategory} required>
+              <Select value={itemCategoryId} onValueChange={setItemCategoryId} required>
                 <SelectTrigger id="itemCategory"><SelectValue placeholder="Select category" /></SelectTrigger>
                 <SelectContent>
-                  {mockCategories.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}
+                  {categories.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

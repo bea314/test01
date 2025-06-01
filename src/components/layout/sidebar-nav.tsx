@@ -21,9 +21,9 @@ export function SidebarNav() {
   return (
     <>
       <div className="flex h-16 items-center justify-center border-b border-sidebar-border px-2 md:justify-start md:px-4">
-        <Link href="/dashboard" className="flex items-center gap-2 text-lg font-semibold text-primary font-headline">
+        <Link href="/dashboard/home" className="flex items-center gap-2 text-lg font-semibold text-primary font-headline">
           <Logo className="h-6 w-auto text-primary" />
-          <span className="hidden group-data-[state=expanded]:md:inline">{APP_NAME}</span>
+          {/* The span with APP_NAME is removed as Logo component already renders the name */}
         </Link>
       </div>
       <SidebarMenu>
@@ -31,7 +31,7 @@ export function SidebarNav() {
           <SidebarMenuItem key={item.label}>
             <SidebarMenuButton
               asChild
-              isActive={pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))}
+              isActive={pathname === item.href || (item.href !== '/dashboard/home' && item.href !== '/dashboard' && pathname.startsWith(item.href))}
               tooltip={{children: item.label, className: "group-data-[state=expanded]:hidden"}}
             >
               <Link href={item.href}>

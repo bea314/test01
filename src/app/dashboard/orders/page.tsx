@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard } from "lucide-react";
+import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard, Users } from "lucide-react";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import type { OrderItem, MenuItem as MenuItemType, OrderType, Waiter, Order, AllergyTag } from '@/lib/types';
@@ -31,6 +31,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from '@/lib/utils';
 
 type MenuView = 'grid' | 'list';
 type OrderStep = 'building' | 'checkout';
@@ -46,6 +47,7 @@ function OrdersPageContent() {
   const [menuView, setMenuView] = useState<MenuView>('grid');
   
   const [orderType, setOrderType] = useState<OrderType>(initialOrderTypeParam || 'Dine-in');
+  const [numberOfGuests, setNumberOfGuests] = useState<number | undefined>(undefined);
   const [selectedWaiter, setSelectedWaiter] = useState<string | undefined>(initialStaff[0]?.id);
   const [tipPercentage, setTipPercentage] = useState<number>(15);
   const [manualTip, setManualTip] = useState<number>(0);
@@ -68,7 +70,7 @@ function OrdersPageContent() {
 
   const addItemToOrder = (menuItem: MenuItemType) => {
     setCurrentOrderItems(prevItems => {
-      const existingItem = prevItems.find(item => item.menuItemId === menuItem.id && !item.observations);
+      const existingItem = prevItems.find(item => item.menuItemId === menuItem.id && !item.observations); // Only merge if no unique observation
       if (existingItem) {
         return prevItems.map(item =>
           item.menuItemId === menuItem.id && !item.observations ? { ...item, quantity: item.quantity + 1 } : item
@@ -140,7 +142,7 @@ function OrdersPageContent() {
           <Card className="shadow-xl lg:order-1">
             <CardHeader>
               <CardTitle className="font-headline flex items-center"><ShoppingCart className="mr-2 h-5 w-5"/>Current Order</CardTitle>
-              <div className="flex gap-2 mt-2">
+              <div className="grid grid-cols-2 gap-2 mt-2">
                   <Select value={orderType} onValueChange={(value) => setOrderType(value as OrderType)}>
                       <SelectTrigger aria-label="Order Type">
                           <SelectValue placeholder="Order Type" />
@@ -160,8 +162,22 @@ function OrdersPageContent() {
                       </SelectContent>
                   </Select>
               </div>
+              {orderType === 'Dine-in' && (
+                <div className="mt-2">
+                  <Label htmlFor="numberOfGuests">Number of Guests (Optional)</Label>
+                  <Input 
+                    id="numberOfGuests" 
+                    type="number" 
+                    value={numberOfGuests || ''} 
+                    onChange={e => setNumberOfGuests(e.target.value ? parseInt(e.target.value) : undefined)} 
+                    placeholder="e.g., 4"
+                    min="1"
+                    className="h-9"
+                  />
+                </div>
+              )}
             </CardHeader>
-            <ScrollArea className="h-[calc(100vh-28rem)]"> 
+            <ScrollArea className="h-[calc(100vh-34rem)] lg:h-[calc(100vh-28rem)]"> 
               <CardContent className="flex flex-col justify-between ">
                   <ScrollArea className="flex-grow h-[280px] pr-2 mb-4">
                   {currentOrderItems.length === 0 ? (
@@ -231,7 +247,7 @@ function OrdersPageContent() {
                <Button className="w-full" size="lg" onClick={handleProceedToCheckout}>
                   Proceed to Checkout <ArrowRight className="ml-2 h-5 w-5" />
                </Button>
-               <Button variant="outline" className="w-full">Send to Kitchen</Button>
+               <Button variant="outline" className="w-full">Send to Kitchen (Mock)</Button>
             </CardFooter>
           </Card>
           
@@ -281,7 +297,7 @@ function OrdersPageContent() {
                         <Image src={item.imageUrl || `https://placehold.co/300x200.png?text=${item.name.replace(/\s/g,'+')}`} alt={item.name} width={300} height={200} className="w-full h-32 object-cover aspect-video" data-ai-hint={item.dataAiHint || "food item"}/>
                         <CardContent className="p-3 flex flex-col flex-grow">
                           <h3 className="font-semibold text-md mb-1 font-headline">#{item.number} - {item.name}</h3>
-                          <p className="text-xs text-muted-foreground mb-1 flex-grow truncate-2-lines">{item.description}</p>
+                          <p className="text-xs text-muted-foreground mb-1 flex-grow line-clamp-2">{item.description}</p>
                            {item.allergyTags && item.allergyTags.length > 0 && (
                             <div className="my-1 flex flex-wrap gap-1">
                               {item.allergyTags.map(tag => (

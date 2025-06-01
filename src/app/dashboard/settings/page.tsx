@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Save, Building, Bell, CreditCard, Printer, WifiOff, Briefcase, FileText, PlusCircle, Trash2, TestTubeDiagonal } from "lucide-react";
+import { Save, Building, Bell, CreditCard, Printer, WifiOff, Briefcase, FileText, PlusCircle, Trash2, TestTubeDiagonal, Tv } from "lucide-react";
 import { Textarea } from '@/components/ui/textarea';
 import type { BusinessFinancialInfo, KitchenPrinter } from '@/lib/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -20,6 +20,8 @@ export default function SettingsPage() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [autoPrintKitchenOrders, setAutoPrintKitchenOrders] = useState(false);
   const [offlineModeEnabled, setOfflineModeEnabled] = useState(true);
+  const [kitchenDisplayEnabled, setKitchenDisplayEnabled] = useState(true);
+
 
   const [cashierPrinter, setCashierPrinter] = useState("");
   
@@ -75,6 +77,7 @@ export default function SettingsPage() {
         notificationsEnabled, 
         autoPrintKitchenOrders, 
         offlineModeEnabled,
+        kitchenDisplayEnabled,
         cashierPrinter,
         kitchenPrinters,
         financialInfo 
@@ -106,6 +109,13 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 <Label htmlFor="restaurantName">Restaurant Name</Label>
                 <Input id="restaurantName" value={restaurantName} onChange={e => setRestaurantName(e.target.value)} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                      <Label htmlFor="kitchenDisplayEnabled" className="text-base flex items-center"><Tv className="mr-2 h-4 w-4"/>Enable Kitchen Display</Label>
+                      <p className="text-sm text-muted-foreground">Activates or deactivates the Kitchen Display System module.</p>
+                  </div>
+                  <Switch id="kitchenDisplayEnabled" checked={kitchenDisplayEnabled} onCheckedChange={setKitchenDisplayEnabled} />
               </div>
             </CardContent>
           </Card>

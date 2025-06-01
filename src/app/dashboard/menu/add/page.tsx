@@ -1,6 +1,6 @@
 
 "use client";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PlusCircle, UploadCloud, ArrowLeft } from "lucide-react";
-import type { MenuItem, AllergyTag } from '@/lib/types';
+import type { MenuItem, AllergyTag, MenuItemCategory } from '@/lib/types';
 import { ALLERGY_TAG_OPTIONS } from '@/lib/types';
 import { mockCategories } from '@/lib/mock-data'; 
 import Link from 'next/link';
@@ -20,12 +20,19 @@ export default function AddMenuItemPage() {
   const [itemName, setItemName] = useState('');
   const [itemDescription, setItemDescription] = useState('');
   const [itemPrice, setItemPrice] = useState('');
-  const [itemCategory, setItemCategory] = useState<string | undefined>(undefined);
+  const [itemCategoryId, setItemCategoryId] = useState<string | undefined>(undefined);
   const [itemAvailability, setItemAvailability] = useState<'available' | 'unavailable'>('available');
   const [itemNumber, setItemNumber] = useState('');
   const [itemImageUrl, setItemImageUrl] = useState('');
   const [itemAllergiesNotes, setItemAllergiesNotes] = useState('');
   const [itemAllergyTags, setItemAllergyTags] = useState<AllergyTag[]>([]);
+
+  const [categories, setCategories] = useState<MenuItemCategory[]>([]);
+
+  useEffect(() => {
+    // In a real app, categories might be fetched. Here we use the current mockCategories.
+    setCategories(mockCategories);
+  }, []);
 
   const handleAllergyTagChange = (tag: AllergyTag, checked: boolean) => {
     setItemAllergyTags(prev => 
@@ -35,7 +42,7 @@ export default function AddMenuItemPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const selectedCat = mockCategories.find(cat => cat.id === itemCategory);
+    const selectedCat = categories.find(cat => cat.id === itemCategoryId);
     if (!selectedCat) {
         alert("Please select a category.");
         return;
@@ -55,6 +62,8 @@ export default function AddMenuItemPage() {
     };
 
     console.log("Submitting new menu item (mock):", newItem);
+    // In a real app, you would call an API to save the item and then likely update the mockMenuItems array
+    // or re-fetch. For this prototype, initialMenuItems in mock-data.ts won't be automatically updated.
     alert("Menu item added (mock)! Check console. Data will not persist in this prototype.");
     router.push('/dashboard/menu');
   };
@@ -95,10 +104,10 @@ export default function AddMenuItemPage() {
             </div>
             <div>
               <Label htmlFor="itemCategory">Category</Label>
-              <Select value={itemCategory} onValueChange={setItemCategory} required>
+              <Select value={itemCategoryId} onValueChange={setItemCategoryId} required>
                 <SelectTrigger id="itemCategory"><SelectValue placeholder="Select category" /></SelectTrigger>
                 <SelectContent>
-                  {mockCategories.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}
+                  {categories.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

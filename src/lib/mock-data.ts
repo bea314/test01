@@ -1,7 +1,7 @@
 
-import type { MenuItem, MenuItemCategory, User, UserRole, RestaurantTable, AllergyTag, Order } from '@/lib/types';
+import type { MenuItem, MenuItemCategory, User, UserRole, RestaurantTable, Order } from '@/lib/types';
 
-export const mockCategories: MenuItemCategory[] = [
+export let mockCategories: MenuItemCategory[] = [
   { id: "cat1", name: "Appetizers" },
   { id: "cat2", name: "Main Courses" },
   { id: "cat3", name: "Desserts" },
@@ -10,41 +10,72 @@ export const mockCategories: MenuItemCategory[] = [
   { id: "cat6", name: "Soups" },
 ];
 
+// Mock functions for category management
+export const addMockCategory = (name: string): MenuItemCategory => {
+  const newCategory = { id: `cat${Date.now()}`, name };
+  mockCategories.push(newCategory);
+  return newCategory;
+};
+
+export const editMockCategory = (id: string, newName: string): MenuItemCategory | undefined => {
+  const categoryIndex = mockCategories.findIndex(cat => cat.id === id);
+  if (categoryIndex > -1) {
+    mockCategories[categoryIndex].name = newName;
+    return mockCategories[categoryIndex];
+  }
+  return undefined;
+};
+
+export const deleteMockCategory = (id: string): boolean => {
+  const initialLength = mockCategories.length;
+  mockCategories = mockCategories.filter(cat => cat.id !== id);
+  // Also update menu items using this category to a default or make them uncategorized
+  initialMenuItems.forEach(item => {
+    if (item.category.id === id) {
+      // For simplicity, let's not assign a new category, or assign to a default if available.
+      // In a real app, you'd handle this more gracefully (e.g., prompt user or set to 'Uncategorized')
+      console.warn(`Category ${id} deleted. Item ${item.id} (${item.name}) is now effectively uncategorized or needs reassignment.`);
+    }
+  });
+  return mockCategories.length < initialLength;
+};
+
+
 export const initialMenuItems: MenuItem[] = [
-  { 
-    id: "item1", 
-    name: "Bruschetta", 
-    description: "Grilled bread rubbed with garlic and topped with olive oil and salt.", 
-    price: 9.50, 
-    category: mockCategories[0], 
-    availability: "available", 
-    number: "A01", 
+  {
+    id: "item1",
+    name: "Bruschetta",
+    description: "Grilled bread rubbed with garlic and topped with olive oil and salt.",
+    price: 9.50,
+    category: mockCategories[0],
+    availability: "available",
+    number: "A01",
     imageUrl: "https://placehold.co/150x100.png?text=Bruschetta",
     dataAiHint: "italian bread",
     allergiesNotes: "Vegan option available upon request.",
     allergyTags: ['vegetarian']
   },
-  { 
-    id: "item2", 
-    name: "Spaghetti Carbonara", 
-    description: "Classic Roman pasta dish with eggs, cheese, pancetta, and pepper.", 
-    price: 18.00, 
-    category: mockCategories[1], 
-    availability: "available", 
-    number: "M05", 
+  {
+    id: "item2",
+    name: "Spaghetti Carbonara",
+    description: "Classic Roman pasta dish with eggs, cheese, pancetta, and pepper.",
+    price: 18.00,
+    category: mockCategories[1],
+    availability: "available",
+    number: "M05",
     imageUrl: "https://placehold.co/150x100.png?text=Carbonara",
     dataAiHint: "pasta dish",
     allergiesNotes: "Contains gluten, dairy, and eggs.",
     allergyTags: []
   },
-  { 
-    id: "item3", 
-    name: "Tiramisu", 
-    description: "Coffee-flavoured Italian dessert.", 
-    price: 8.00, 
-    category: mockCategories[2], 
-    availability: "unavailable", 
-    number: "D02", 
+  {
+    id: "item3",
+    name: "Tiramisu",
+    description: "Coffee-flavoured Italian dessert.",
+    price: 8.00,
+    category: mockCategories[2],
+    availability: "unavailable",
+    number: "D02",
     imageUrl: "https://placehold.co/150x100.png?text=Tiramisu",
     dataAiHint: "italian dessert",
     allergiesNotes: "Contains dairy, eggs, gluten, and coffee.",
@@ -106,7 +137,7 @@ export const initialMenuItems: MenuItem[] = [
     name: 'Caesar Salad',
     description: 'Crisp romaine lettuce, parmesan cheese, croutons, and Caesar dressing.',
     price: 12.00,
-    category: mockCategories[4], 
+    category: mockCategories[4],
     number: 'S01',
     availability: 'available',
     imageUrl: 'https://placehold.co/150x100.png?text=Caesar+Salad',
@@ -129,13 +160,14 @@ export const initialMenuItems: MenuItem[] = [
   }
 ];
 
-export const userRoles: UserRole[] = ['admin', 'cashier', 'waiter'];
+export const userRoles: UserRole[] = ['admin', 'cashier', 'waiter', 'kitchen'];
 
 export const initialStaff: User[] = [
   { id: "staff1", name: "Alice Wonderland", email: "alice@krealiares.com", role: "admin" },
   { id: "staff2", name: "Bob The Builder", email: "bob@krealiares.com", role: "waiter" },
   { id: "staff3", name: "Charlie Chaplin", email: "charlie@krealiares.com", role: "cashier" },
   { id: "staff4", name: "Diana Prince", email: "diana@krealiares.com", role: "waiter" },
+  { id: "staff5", name: "Kevin Mitnick", email: "kevin@krealiares.com", role: "kitchen" },
 ];
 
 export const initialTables: RestaurantTable[] = [
@@ -149,17 +181,18 @@ export const initialTables: RestaurantTable[] = [
 export const mockActiveOrders: Order[] = [
   {
     id: "order001",
-    tableId: "T1",
+    tableId: "t1", // Matched to initialTables
     waiterId: "staff2", // Bob The Builder
     orderType: "Dine-in",
+    numberOfGuests: 3,
     items: [
       { id: "oi1", menuItemId: "item2", name: "Spaghetti Carbonara", quantity: 1, price: 18.00, modifiers: [], status: 'preparing', observations: "Extra cheese" },
       { id: "oi2", menuItemId: "item7", name: "Iced Tea", quantity: 2, price: 3.50, modifiers: [], status: 'delivered' },
     ],
-    status: "open", 
-    subtotal: (18.00 * 1) + (3.50 * 2), taxAmount: ((18.00 * 1) + (3.50 * 2)) * 0.13, tipAmount: 0, discountAmount: 0, 
+    status: "open",
+    subtotal: (18.00 * 1) + (3.50 * 2), taxAmount: ((18.00 * 1) + (3.50 * 2)) * 0.13, tipAmount: 0, discountAmount: 0,
     totalAmount: ((18.00 * 1) + (3.50 * 2)) * 1.13,
-    createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(), 
+    createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
@@ -171,23 +204,38 @@ export const mockActiveOrders: Order[] = [
       { id: "oi4", menuItemId: "item9", name: "Tomato Soup", quantity: 1, price: 7.50, modifiers: [], status: 'ready', observations: "No garlic bread" },
     ],
     status: "pending_payment",
-    subtotal: 22.50 + 7.50, taxAmount: (22.50 + 7.50) * 0.13, tipAmount: 0, discountAmount: 0, 
+    subtotal: 22.50 + 7.50, taxAmount: (22.50 + 7.50) * 0.13, tipAmount: 0, discountAmount: 0,
     totalAmount: (22.50 + 7.50) * 1.13,
-    createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(), 
+    createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
   },
   {
     id: "order003",
-    tableId: "T5",
+    tableId: "t5", // Matched to initialTables
     waiterId: "staff2", // Bob The Builder
     orderType: "Dine-in",
+    numberOfGuests: 1,
     items: [
       { id: "oi5", menuItemId: "item1", name: "Bruschetta", quantity: 1, price: 9.50, modifiers: [{id: 'mod1', name: 'Extra Tomatoes', priceAdjustment: 0}], status: 'pending' },
     ],
     status: "open",
-    subtotal: 9.50, taxAmount: 9.50 * 0.13, tipAmount: 0, discountAmount: 0, 
+    subtotal: 9.50, taxAmount: 9.50 * 0.13, tipAmount: 0, discountAmount: 0,
     totalAmount: 9.50 * 1.13,
-    createdAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(), 
+    createdAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "order004",
+    waiterId: "staff4", // Diana Prince
+    orderType: "Delivery",
+    items: [
+      { id: "oi6", menuItemId: "item4", name: "Spring Rolls", quantity: 2, price: 8.99, modifiers: [], status: 'pending' },
+      { id: "oi7", menuItemId: "item6", name: "Chocolate Lava Cake", quantity: 1, price: 9.75, modifiers: [], status: 'pending', observations: "Add extra chocolate sauce if possible" },
+    ],
+    status: "open",
+    subtotal: (8.99*2) + 9.75, taxAmount: ((8.99*2) + 9.75) * 0.13, tipAmount: 0, discountAmount: 0,
+    totalAmount: ((8.99*2) + 9.75) * 1.13,
+    createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
     updatedAt: new Date().toISOString(),
   }
 ];
