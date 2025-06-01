@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, User, Tag, Hash, Clock, Calendar, CreditCard, Percent, DollarSign, Receipt, Info, Utensils, Loader2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, User, Tag, Hash, Clock, Calendar, CreditCard, Percent, DollarSign, Receipt, Info, Utensils, Loader2, AlertTriangle, Users, CheckCircle } from "lucide-react";
 import type { Order, OrderItem } from '@/lib/types';
 import { mockActiveOrders, initialStaff, initialTables } from '@/lib/mock-data';
 import { IVA_RATE } from '@/lib/constants';
