@@ -1,7 +1,7 @@
 
 "use client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowRight, LayoutGrid, ShoppingBag, Truck, ListOrdered, Settings, Eye } from "lucide-react";
 import Link from "next/link";
 import { APP_NAME } from "@/lib/constants";
@@ -22,9 +22,9 @@ const QuickActionCard: React.FC<QuickActionProps> = ({ title, description, icon:
         <CardTitle className="font-headline text-xl">{title}</CardTitle>
       </div>
     </CardHeader>
-    <CardContent className="flex flex-col flex-grow p-4 pt-0"> {/* Ensure consistent padding and flex behavior */}
+    <CardContent className="flex flex-col flex-grow p-4 pt-0">
       <p className="text-sm text-muted-foreground mb-4 h-10 flex-shrink-0">{description}</p>
-      <div className="mt-auto"> {/* Pushes button to the bottom */}
+      <div className="mt-auto">
         <Button asChild variant={isPrimary ? "default" : "outline"} className="w-full">
           <Link href={href}>
             {title.startsWith("New") || title.startsWith("Start") ? "Start Now" : "Go to " + title}
@@ -36,13 +36,28 @@ const QuickActionCard: React.FC<QuickActionProps> = ({ title, description, icon:
   </Card>
 );
 
+const SecondaryActionListItem: React.FC<Omit<QuickActionProps, 'isPrimary'>> = ({ title, description, icon: Icon, href }) => (
+  <li>
+    <Link href={href} className="block p-4 border rounded-lg hover:bg-muted/5 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-ring">
+      <div className="flex items-center gap-4">
+        <Icon className="h-7 w-7 text-primary flex-shrink-0" />
+        <div className="flex-1">
+          <h3 className="font-semibold text-md">{title}</h3>
+          <p className="text-sm text-muted-foreground">{description}</p>
+        </div>
+        <ArrowRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+      </div>
+    </Link>
+  </li>
+);
+
 export default function HomePage() {
   const primaryActions: QuickActionProps[] = [
     {
       title: "New Table Order",
       description: "Start an order for customers dining in. Assign to a table.",
       icon: LayoutGrid,
-      href: "/dashboard", // Link to Table View to select a table
+      href: "/dashboard", 
       isPrimary: true,
     },
     {
@@ -61,7 +76,7 @@ export default function HomePage() {
     },
   ];
 
-  const secondaryActions: QuickActionProps[] = [
+  const secondaryActions: Omit<QuickActionProps, 'isPrimary'>[] = [
      {
       title: "View Active Orders",
       description: "Monitor all ongoing orders and their statuses.",
@@ -104,11 +119,11 @@ export default function HomePage() {
 
       <section>
         <h2 className="text-2xl font-headline font-semibold text-foreground mb-6 text-center">Other Quick Actions</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <ul className="space-y-3 max-w-xl mx-auto">
           {secondaryActions.map((action) => (
-            <QuickActionCard key={action.title} {...action} />
+            <SecondaryActionListItem key={action.title} {...action} />
           ))}
-        </div>
+        </ul>
       </section>
     </div>
   );
