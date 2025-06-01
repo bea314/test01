@@ -9,6 +9,7 @@ import type { DiscountPreset } from '@/lib/types';
 import { mockPresetDiscounts, initialMenuItems, mockCategories } from '@/lib/mock-data';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge'; // Added import
 
 export default function DiscountsPage() {
   const [discounts, setDiscounts] = useState<DiscountPreset[]>(mockPresetDiscounts);
