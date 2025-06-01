@@ -1,5 +1,5 @@
 
-import type { MenuItem, MenuItemCategory, User, UserRole, RestaurantTable, Order } from '@/lib/types';
+import type { MenuItem, MenuItemCategory, User, UserRole, RestaurantTable, Order, DiscountPreset } from '@/lib/types';
 
 export let mockCategories: MenuItemCategory[] = [
   { id: "cat1", name: "Appetizers" },
@@ -10,7 +10,6 @@ export let mockCategories: MenuItemCategory[] = [
   { id: "cat6", name: "Soups" },
 ];
 
-// Mock functions for category management
 export const addMockCategory = (name: string): MenuItemCategory => {
   const newCategory = { id: `cat${Date.now()}`, name };
   mockCategories.push(newCategory);
@@ -29,11 +28,8 @@ export const editMockCategory = (id: string, newName: string): MenuItemCategory 
 export const deleteMockCategory = (id: string): boolean => {
   const initialLength = mockCategories.length;
   mockCategories = mockCategories.filter(cat => cat.id !== id);
-  // Also update menu items using this category to a default or make them uncategorized
   initialMenuItems.forEach(item => {
     if (item.category.id === id) {
-      // For simplicity, let's not assign a new category, or assign to a default if available.
-      // In a real app, you'd handle this more gracefully (e.g., prompt user or set to 'Uncategorized')
       console.warn(`Category ${id} deleted. Item ${item.id} (${item.name}) is now effectively uncategorized or needs reassignment.`);
     }
   });
@@ -53,7 +49,7 @@ export const initialMenuItems: MenuItem[] = [
     imageUrl: "https://placehold.co/150x100.png?text=Bruschetta",
     dataAiHint: "italian bread",
     allergiesNotes: "Vegan option available upon request.",
-    allergyTags: ['vegetarian']
+    allergyTags: ['vegetarian', 'dairy-free']
   },
   {
     id: "item2",
@@ -92,7 +88,7 @@ export const initialMenuItems: MenuItem[] = [
     imageUrl: 'https://placehold.co/150x100.png?text=Spring+Rolls',
     dataAiHint: "asian appetizer",
     allergiesNotes: 'Vegan.',
-    allergyTags: ['vegan', 'vegetarian', 'dairy-free']
+    allergyTags: ['vegan', 'vegetarian', 'dairy-free', 'nut-free']
   },
   {
     id: 'item5',
@@ -181,8 +177,8 @@ export const initialTables: RestaurantTable[] = [
 export const mockActiveOrders: Order[] = [
   {
     id: "order001",
-    tableId: "t1", // Matched to initialTables
-    waiterId: "staff2", // Bob The Builder
+    tableId: "t1",
+    waiterId: "staff2",
     orderType: "Dine-in",
     numberOfGuests: 3,
     items: [
@@ -197,7 +193,7 @@ export const mockActiveOrders: Order[] = [
   },
   {
     id: "order002",
-    waiterId: "staff4", // Diana Prince
+    waiterId: "staff4",
     orderType: "Takeout",
     items: [
       { id: "oi3", menuItemId: "item5", name: "Grilled Salmon", quantity: 1, price: 22.50, modifiers: [], status: 'ready' },
@@ -211,8 +207,8 @@ export const mockActiveOrders: Order[] = [
   },
   {
     id: "order003",
-    tableId: "t5", // Matched to initialTables
-    waiterId: "staff2", // Bob The Builder
+    tableId: "t5",
+    waiterId: "staff2",
     orderType: "Dine-in",
     numberOfGuests: 1,
     items: [
@@ -226,7 +222,7 @@ export const mockActiveOrders: Order[] = [
   },
   {
     id: "order004",
-    waiterId: "staff4", // Diana Prince
+    waiterId: "staff4",
     orderType: "Delivery",
     items: [
       { id: "oi6", menuItemId: "item4", name: "Spring Rolls", quantity: 2, price: 8.99, modifiers: [], status: 'pending' },
@@ -235,7 +231,13 @@ export const mockActiveOrders: Order[] = [
     status: "open",
     subtotal: (8.99*2) + 9.75, taxAmount: ((8.99*2) + 9.75) * 0.13, tipAmount: 0, discountAmount: 0,
     totalAmount: ((8.99*2) + 9.75) * 1.13,
-    createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    createdAt: new Date(Date.now() - 16 * 60 * 1000).toISOString(), // Older order for KDS priority
     updatedAt: new Date().toISOString(),
   }
+];
+
+export const mockPresetDiscounts: DiscountPreset[] = [
+    { id: 'discount1', name: 'Employee Discount', percentage: 15, description: 'For all KREALIRES staff.' },
+    { id: 'discount2', name: 'Happy Hour Special', percentage: 10, description: 'Valid on select items during happy hour.' },
+    { id: 'discount3', name: 'VIP Customer', percentage: 5, description: 'For registered VIP customers.' },
 ];

@@ -1,14 +1,15 @@
 
 "use client";
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Utensils, Clock, CheckCircle, Truck, User, AlertCircle } from "lucide-react";
+import { Utensils, Clock, CheckCircle, Truck, User, AlertCircle, Eye } from "lucide-react";
 import type { Order, OrderItem } from '@/lib/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { initialStaff, mockActiveOrders as allMockOrders } from '@/lib/mock-data'; // Import shared staff and order data
+import { initialStaff, mockActiveOrders as allMockOrders } from '@/lib/mock-data'; 
 
 const OrderStatusBadge = ({ status }: { status: Order['status'] }) => {
   switch (status) {
@@ -17,6 +18,7 @@ const OrderStatusBadge = ({ status }: { status: Order['status'] }) => {
     case 'paid': return <Badge variant="secondary" className="bg-green-500/20 text-green-400"><CheckCircle className="mr-1 h-3 w-3" />Paid</Badge>;
     case 'completed': return <Badge variant="default"><CheckCircle className="mr-1 h-3 w-3" />Completed</Badge>;
     case 'cancelled': return <Badge variant="destructive"><AlertCircle className="mr-1 h-3 w-3" />Cancelled</Badge>;
+    case 'on_hold': return <Badge variant="secondary" className="bg-orange-500/20 text-orange-400"><AlertCircle className="mr-1 h-3 w-3" />On Hold</Badge>;
     default: return <Badge variant="outline">{status}</Badge>;
   }
 };
@@ -37,8 +39,8 @@ export default function ActiveOrdersPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
-    setOrders(allMockOrders); // Use imported mock orders
-    const timer = setInterval(() => setCurrentTime(new Date()), 60000); // Update time every minute
+    setOrders(allMockOrders); 
+    const timer = setInterval(() => setCurrentTime(new Date()), 60000); 
     return () => clearInterval(timer);
   }, []);
 
@@ -60,7 +62,7 @@ export default function ActiveOrdersPage() {
 
   const getWaiterName = (waiterId: string) => {
     const waiter = initialStaff.find(staff => staff.id === waiterId);
-    return waiter ? waiter.name : waiterId; // Fallback to ID if not found
+    return waiter ? waiter.name : waiterId; 
   };
 
   const filterOrders = (status: Order['status'] | 'all') => {
@@ -73,6 +75,7 @@ export default function ActiveOrdersPage() {
     {value: 'open', label: 'Open'},
     {value: 'pending_payment', label: 'Pending Payment'},
     {value: 'paid', label: 'Paid'},
+    {value: 'on_hold', label: 'On Hold'},
   ];
 
   return (
@@ -80,7 +83,7 @@ export default function ActiveOrdersPage() {
       <h1 className="text-3xl font-headline font-bold text-foreground mb-8">Active Orders</h1>
       
       <Tabs defaultValue="all" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 mb-6">
           {orderTabs.map(tab => (
             <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>
           ))}
@@ -88,7 +91,7 @@ export default function ActiveOrdersPage() {
 
         {orderTabs.map(tab => (
           <TabsContent key={tab.value} value={tab.value}>
-            <ScrollArea className="h-[calc(100vh-20rem)]"> {/* Adjust height as needed */}
+            <ScrollArea className="h-[calc(100vh-20rem)]"> 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filterOrders(tab.value).length === 0 && (
                   <p className="text-muted-foreground col-span-full text-center py-10">No orders with status "{tab.label}".</p>
@@ -128,7 +131,11 @@ export default function ActiveOrdersPage() {
                     </CardContent>
                     <CardFooter className="flex justify-between items-center border-t pt-4 mt-auto">
                       <span className="font-semibold text-lg text-primary">Total: ${order.totalAmount.toFixed(2)}</span>
-                      <Button variant="outline" size="sm">View Details</Button>
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href={`/dashboard/active-orders/${order.id}`}>
+                           <Eye className="mr-1 h-4 w-4"/> View Details
+                        </Link>
+                      </Button>
                     </CardFooter>
                   </Card>
                 ))}

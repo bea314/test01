@@ -4,10 +4,11 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Utensils, Clock, CheckCircle, Bell, Zap, Trash2 } from "lucide-react";
+import { Utensils, Clock, CheckCircle, Bell, Zap, Trash2, TvOff } from "lucide-react";
 import type { Order, OrderItem } from '@/lib/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { initialStaff, mockActiveOrders as rawOrders } from '@/lib/mock-data';
+import { MOCK_KITCHEN_DISPLAY_ENABLED } from '@/lib/constants'; // Mock setting
 
 const initialKdsOrders: Order[] = JSON.parse(JSON.stringify(rawOrders))
     .map((order: Order) => ({
@@ -28,12 +29,17 @@ const OrderItemStatusBadgeKDS = ({ status }: { status: OrderItem['status'] }) =>
 export default function KitchenDisplayPage() {
   const [kdsOrders, setKdsOrders] = useState<Order[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const kitchenDisplayEnabled = MOCK_KITCHEN_DISPLAY_ENABLED; // Use the mock constant
 
   useEffect(() => {
-    setKdsOrders(initialKdsOrders);
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000); // Update time every second for KDS
+    if (kitchenDisplayEnabled) {
+      setKdsOrders(initialKdsOrders);
+    } else {
+      setKdsOrders([]);
+    }
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [kitchenDisplayEnabled]);
 
   const formatTimeAgoKDS = (dateString: string) => {
     const date = new Date(dateString);
@@ -63,7 +69,6 @@ export default function KitchenDisplayPage() {
           const updatedItems = order.items.map(item => 
             item.id === itemId ? { ...item, status: newStatus } : item
           );
-          // Filter out items that are now 'ready' or 'cancelled' from this specific order for KDS view
           return { 
             ...order, 
             items: updatedItems.filter(item => item.status === 'pending' || item.status === 'preparing')
@@ -71,7 +76,6 @@ export default function KitchenDisplayPage() {
         }
         return order;
       });
-      // Remove order from KDS if all its items are no longer pending/preparing
       return updatedOrders.filter(order => order.items.length > 0);
     });
     alert(`Mock: Item ${itemId} in order ${orderId} updated to ${newStatus}.`);
@@ -87,13 +91,26 @@ export default function KitchenDisplayPage() {
     alert("Mock: All displayed orders bumped from KDS.");
   };
 
+  if (!kitchenDisplayEnabled) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-muted/40 p-4 text-center">
+        <TvOff className="h-24 w-24 text-muted-foreground mb-6" />
+        <h1 className="text-3xl font-headline font-bold text-foreground mb-2">Kitchen Display Disabled</h1>
+        <p className="text-lg text-muted-foreground">
+          The Kitchen Display System is currently turned off in the application settings.
+        </p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Please enable it in Settings {'>'} General to view kitchen orders.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col bg-muted/40 p-4">
       <div className="mb-6 flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-headline font-bold text-foreground">Kitchen Display</h1>
-          {/* Placeholder for kitchen selector */}
-          {/* <p className="text-sm text-muted-foreground">Showing orders for: Main Kitchen (Selector coming soon)</p> */}
         </div>
         <div className="flex items-center gap-4">
           <Button variant="destructive" onClick={handleBumpAllOrders} disabled={kdsOrders.length === 0}>
@@ -128,7 +145,7 @@ export default function KitchenDisplayPage() {
                     </CardDescription>
                   </div>
                   {new Date(order.createdAt).getTime() < currentTime.getTime() - 15 * 60 * 1000 && 
-                    <Zap className="h-5 w-5 text-red-500" title="Priority Order"/>
+                    <Zap className="h-5 w-5 text-red-500" title="Priority Order (Older than 15 mins)"/>
                   }
                 </div>
               </CardHeader>

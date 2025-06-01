@@ -1,6 +1,6 @@
 
 "use client";
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,14 +8,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard, Users } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard, Users, Percent, WalletCards, CircleDollarSign, EyeSlash, StickyNote } from "lucide-react";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import type { OrderItem, MenuItem as MenuItemType, OrderType, Waiter, Order, AllergyTag } from '@/lib/types';
-import { IVA_RATE } from '@/lib/constants';
+import type { OrderItem, MenuItem as MenuItemType, OrderType, Waiter, Order, AllergyTag, PaymentSplitType, DiscountPreset } from '@/lib/types';
+import { IVA_RATE, DEFAULT_TIP_PERCENTAGE } from '@/lib/constants';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
-import { initialMenuItems as mockMenuItemsAll, mockCategories as mockMenuCategories, initialStaff } from '@/lib/mock-data';
+import { initialMenuItems as mockMenuItemsAll, mockCategories as mockMenuCategories, initialStaff, mockPresetDiscounts } from '@/lib/mock-data';
 import {
   Dialog,
   DialogContent,
@@ -32,13 +34,18 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
+
 
 type MenuView = 'grid' | 'list';
 type OrderStep = 'building' | 'checkout';
+type TipMode = 'default' | 'percentage' | 'manual';
+
 
 function OrdersPageContent() {
   const searchParams = useSearchParams();
   const initialOrderTypeParam = searchParams.get('type') as OrderType | null;
+  const { toast } = useToast();
 
   const [currentStep, setCurrentStep] = useState<OrderStep>('building');
   const [currentOrderItems, setCurrentOrderItems] = useState<OrderItem[]>([]);
@@ -47,11 +54,17 @@ function OrdersPageContent() {
   const [menuView, setMenuView] = useState<MenuView>('grid');
   
   const [orderType, setOrderType] = useState<OrderType>(initialOrderTypeParam || 'Dine-in');
-  const [numberOfGuests, setNumberOfGuests] = useState<number | undefined>(undefined);
+  const [numberOfGuests, setNumberOfGuests] = useState<number | undefined>(1); // Default to 1 for Dine-in
   const [selectedWaiter, setSelectedWaiter] = useState<string | undefined>(initialStaff[0]?.id);
-  const [tipPercentage, setTipPercentage] = useState<number>(15);
-  const [manualTip, setManualTip] = useState<number>(0);
-  const [discountPercentage, setDiscountPercentage] = useState<number>(0);
+  
+  // Tip state
+  const [tipMode, setTipMode] = useState<TipMode>('default');
+  const [customTipPercentage, setCustomTipPercentage] = useState<number>(DEFAULT_TIP_PERCENTAGE);
+  const [manualTipAmount, setManualTipAmount] = useState<number>(0);
+
+  // Discount state
+  const [selectedDiscountId, setSelectedDiscountId] = useState<string | undefined>(undefined);
+
   const [paymentMethod, setPaymentMethod] = useState<string | undefined>(undefined);
   
   const [dteType, setDteType] = useState<'consumidor_final' | 'credito_fiscal'>('consumidor_final');
@@ -62,11 +75,27 @@ function OrdersPageContent() {
   const [editingObservationItem, setEditingObservationItem] = useState<OrderItem | null>(null);
   const [currentObservationText, setCurrentObservationText] = useState('');
 
+  // Order actions state
+  const [isCourtesy, setIsCourtesy] = useState(false);
+  const [isOnHold, setIsOnHold] = useState(false);
+  const [disableReceiptPrint, setDisableReceiptPrint] = useState(false);
+
+  // Payment splitting state
+  const [paymentSplitType, setPaymentSplitType] = useState<PaymentSplitType>('none');
+  const [paymentSplitWays, setPaymentSplitWays] = useState<number>(2);
+  const [itemsToSplit, setItemsToSplit] = useState<Record<string, boolean>>({});
+
+
   useEffect(() => {
     if (initialOrderTypeParam) {
       setOrderType(initialOrderTypeParam);
+      if (initialOrderTypeParam !== 'Dine-in') {
+        setNumberOfGuests(undefined);
+      } else {
+        setNumberOfGuests(numberOfGuests === undefined ? 1 : numberOfGuests);
+      }
     }
-  }, [initialOrderTypeParam]);
+  }, [initialOrderTypeParam, numberOfGuests]);
 
   const addItemToOrder = (menuItem: MenuItemType) => {
     setCurrentOrderItems(prevItems => {
@@ -104,11 +133,38 @@ function OrdersPageContent() {
     }
   };
   
-  const subtotal = currentOrderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const taxAmount = subtotal * IVA_RATE;
-  const tipAmount = manualTip > 0 ? manualTip : subtotal * (tipPercentage / 100);
-  const discountAmount = subtotal * (discountPercentage / 100);
-  const totalAmount = subtotal + taxAmount + tipAmount - discountAmount;
+  const subtotal = useMemo(() => currentOrderItems.reduce((sum, item) => sum + item.price * item.quantity, 0), [currentOrderItems]);
+  
+  const discountPercentage = useMemo(() => {
+    if (isCourtesy) return 100;
+    const preset = mockPresetDiscounts.find(d => d.id === selectedDiscountId);
+    return preset ? preset.percentage : 0;
+  }, [selectedDiscountId, isCourtesy]);
+  
+  const discountAmount = useMemo(() => subtotal * (discountPercentage / 100), [subtotal, discountPercentage]);
+  
+  const subtotalAfterDiscount = useMemo(() => subtotal - discountAmount, [subtotal, discountAmount]);
+
+  const tipAmount = useMemo(() => {
+    if (isCourtesy) return 0;
+    switch (tipMode) {
+      case 'percentage':
+        return subtotalAfterDiscount * (customTipPercentage / 100);
+      case 'manual':
+        return manualTipAmount;
+      case 'default':
+      default:
+        return subtotalAfterDiscount * (DEFAULT_TIP_PERCENTAGE / 100);
+    }
+  }, [tipMode, subtotalAfterDiscount, customTipPercentage, manualTipAmount, isCourtesy]);
+
+  const taxAmount = useMemo(() => isCourtesy ? 0 : subtotalAfterDiscount * IVA_RATE, [subtotalAfterDiscount, isCourtesy]);
+  
+  const totalAmount = useMemo(() => {
+    if (isCourtesy) return 0;
+    return subtotalAfterDiscount + taxAmount + tipAmount;
+  }, [subtotalAfterDiscount, taxAmount, tipAmount, isCourtesy]);
+
 
   const filteredMenuItems = mockMenuItemsAll.filter(item =>
     (item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -118,11 +174,48 @@ function OrdersPageContent() {
 
   const handleProceedToCheckout = () => {
     if (currentOrderItems.length === 0) {
-        alert("Please add items to the order before proceeding to checkout.");
+        toast({ title: "Empty Order", description: "Please add items to the order before proceeding.", variant: "destructive" });
+        return;
+    }
+    if (isOnHold) {
+        toast({ title: "Order on Hold", description: "This order is currently on hold. Resolve hold status to proceed.", variant: "destructive" });
         return;
     }
     setCurrentStep('checkout');
   }
+
+  const handleFinalizeAndPay = () => {
+    if (!paymentMethod && !isCourtesy) {
+        toast({ title: "Payment Method Required", description: "Please select a payment method.", variant: "destructive" });
+        return;
+    }
+    if (dteType === 'credito_fiscal' && (!dteNit || !dteNrc || !dteCustomerName)) {
+        toast({ title: "DTE Information Incomplete", description: "Please fill all required fields for Crédito Fiscal.", variant: "destructive" });
+        return;
+    }
+    
+    let message = "Order Finalized (Mock)!";
+    if (paymentSplitType !== 'none') {
+        message += ` Payment split: ${paymentSplitType}`;
+        if (paymentSplitType === 'equal') message += ` into ${paymentSplitWays} ways.`;
+    }
+     if (isCourtesy) message = "Order Marked as Courtesy (Mock)!";
+     if (isOnHold) message = "Order status set to On Hold (Mock)!";
+
+    toast({ title: "Order Processed", description: message });
+    // Reset state for a new order or redirect
+    // setCurrentOrderItems([]);
+    // setCurrentStep('building');
+    // etc.
+  };
+
+  const handleSendToKitchen = () => {
+    if (currentOrderItems.length === 0) {
+        toast({ title: "Empty Order", description: "Cannot send an empty order to the kitchen.", variant: "destructive" });
+        return;
+    }
+    toast({ title: "Order Sent", description: "Order sent to kitchen (Mock)." });
+  };
 
   return (
     <div className="container mx-auto py-8">
@@ -143,7 +236,11 @@ function OrdersPageContent() {
             <CardHeader>
               <CardTitle className="font-headline flex items-center"><ShoppingCart className="mr-2 h-5 w-5"/>Current Order</CardTitle>
               <div className="grid grid-cols-2 gap-2 mt-2">
-                  <Select value={orderType} onValueChange={(value) => setOrderType(value as OrderType)}>
+                  <Select value={orderType} onValueChange={(value) => {
+                      setOrderType(value as OrderType);
+                      if (value !== 'Dine-in') setNumberOfGuests(undefined);
+                      else if (numberOfGuests === undefined) setNumberOfGuests(1);
+                  }}>
                       <SelectTrigger aria-label="Order Type">
                           <SelectValue placeholder="Order Type" />
                       </SelectTrigger>
@@ -164,7 +261,7 @@ function OrdersPageContent() {
               </div>
               {orderType === 'Dine-in' && (
                 <div className="mt-2">
-                  <Label htmlFor="numberOfGuests">Number of Guests (Optional)</Label>
+                  <Label htmlFor="numberOfGuests">Number of Guests</Label>
                   <Input 
                     id="numberOfGuests" 
                     type="number" 
@@ -177,7 +274,7 @@ function OrdersPageContent() {
                 </div>
               )}
             </CardHeader>
-            <ScrollArea className="h-[calc(100vh-34rem)] lg:h-[calc(100vh-28rem)]"> 
+            <ScrollArea className="h-[calc(100vh-36rem)] lg:h-[calc(100vh-30rem)]"> 
               <CardContent className="flex flex-col justify-between ">
                   <ScrollArea className="flex-grow h-[280px] pr-2 mb-4">
                   {currentOrderItems.length === 0 ? (
@@ -238,16 +335,15 @@ function OrdersPageContent() {
 
                   <div className="space-y-2 text-sm mb-4">
                     <div className="flex justify-between"><span>Subtotal:</span> <span>${subtotal.toFixed(2)}</span></div>
-                    <div className="flex justify-between"><span>Tax ({(IVA_RATE * 100).toFixed(0)}%):</span> <span>${taxAmount.toFixed(2)}</span></div>
-                    <div className="flex justify-between font-bold text-lg text-primary"><span>Total:</span> <span>${totalAmount.toFixed(2)}</span></div>
+                    <div className="flex justify-between font-bold text-lg text-primary"><span>Total (Approx.):</span> <span>${(subtotal * (1 + IVA_RATE)).toFixed(2)}</span></div>
                   </div>
               </CardContent>
             </ScrollArea>
             <CardFooter className="flex-col gap-2 mt-auto border-t pt-4">
-               <Button className="w-full" size="lg" onClick={handleProceedToCheckout}>
+               <Button className="w-full" size="lg" onClick={handleProceedToCheckout} disabled={isOnHold}>
                   Proceed to Checkout <ArrowRight className="ml-2 h-5 w-5" />
                </Button>
-               <Button variant="outline" className="w-full">Send to Kitchen (Mock)</Button>
+               <Button variant="outline" className="w-full" onClick={handleSendToKitchen}>Send to Kitchen (Mock)</Button>
             </CardFooter>
           </Card>
           
@@ -305,7 +401,7 @@ function OrdersPageContent() {
                               ))}
                             </div>
                           )}
-                           {item.allergiesNotes && (
+                           {item.allergiesNotes && item.allergiesNotes.trim() && (
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -346,7 +442,7 @@ function OrdersPageContent() {
                                   ))}
                                 </div>
                               )}
-                              {item.allergiesNotes && (
+                              {item.allergiesNotes && item.allergiesNotes.trim() && (
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
@@ -380,7 +476,7 @@ function OrdersPageContent() {
       )}
 
       {currentStep === 'checkout' && (
-         <Card className="shadow-xl max-w-2xl mx-auto">
+         <Card className="shadow-xl max-w-3xl mx-auto">
             <CardHeader>
                 <CardTitle className="font-headline flex items-center"><CreditCard className="mr-2 h-5 w-5"/>Payment Details</CardTitle>
                 <CardDescription>Review your order and complete the payment.</CardDescription>
@@ -396,6 +492,13 @@ function OrdersPageContent() {
                                     <p className="text-xs text-muted-foreground">${(item.price * item.quantity).toFixed(2)}</p>
                                     {item.observations && <p className="text-xs text-blue-500 mt-0.5">Notes: {item.observations}</p>}
                                 </div>
+                                 {paymentSplitType === 'by_item' && (
+                                    <Checkbox
+                                      checked={!!itemsToSplit[item.id]}
+                                      onCheckedChange={(checked) => setItemsToSplit(prev => ({...prev, [item.id]: !!checked}))}
+                                      aria-label={`Select ${item.name} for separate payment`}
+                                    />
+                                  )}
                             </div>
                         ))}
                     </ScrollArea>
@@ -403,37 +506,84 @@ function OrdersPageContent() {
 
                 <Separator />
 
-                <div className="space-y-2 text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                        <Label className="font-headline">Tip Options</Label>
+                        <RadioGroup value={tipMode} onValueChange={(value) => setTipMode(value as TipMode)}>
+                            <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="default" id="tipDefault" />
+                                <Label htmlFor="tipDefault">Default ({DEFAULT_TIP_PERCENTAGE}%)</Label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="percentage" id="tipPercentage" />
+                                <Label htmlFor="tipPercentage" className="flex-1">Custom Percentage</Label>
+                                {tipMode === 'percentage' && <Input type="number" value={customTipPercentage} onChange={e => setCustomTipPercentage(Number(e.target.value))} className="w-20 h-8 text-sm" aria-label="Custom tip percentage" />} %
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="manual" id="tipManual" />
+                                <Label htmlFor="tipManual" className="flex-1">Manual Amount</Label>
+                                {tipMode === 'manual' && <Input type="number" value={manualTipAmount} onChange={e => setManualTipAmount(Number(e.target.value))} className="w-24 h-8 text-sm" aria-label="Manual tip amount" />} $
+                            </div>
+                        </RadioGroup>
+                    </div>
+                    <div className="space-y-3">
+                         <Label className="font-headline">Discount Options</Label>
+                         <Select value={selectedDiscountId} onValueChange={(value) => {setSelectedDiscountId(value); setIsCourtesy(false);}} >
+                            <SelectTrigger aria-label="Select Discount">
+                                <SelectValue placeholder="No Discount" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">No Discount</SelectItem>
+                                {mockPresetDiscounts.map(d => (
+                                    <SelectItem key={d.id} value={d.id}>{d.name} ({d.percentage}%)</SelectItem>
+                                ))}
+                            </SelectContent>
+                         </Select>
+                    </div>
+                </div>
+                 <Separator />
+                 <div className="space-y-2 text-sm">
                     <div className="flex justify-between"><span>Subtotal:</span> <span>${subtotal.toFixed(2)}</span></div>
-                    <div className="flex items-center justify-between">
-                        <span>Tip:</span>
-                        <div className="flex items-center gap-1">
-                            <Input type="number" value={tipPercentage} onChange={e => {setTipPercentage(Number(e.target.value)); setManualTip(0);}} className="w-16 h-7 text-sm" aria-label="Tip percentage" /> %
-                            <span>or</span>
-                            <Input type="number" value={manualTip} onChange={e => {setManualTip(Number(e.target.value)); setTipPercentage(0);}} className="w-20 h-7 text-sm" aria-label="Manual tip amount" /> $
-                        </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                        <span>Discount:</span>
-                        <div className="flex items-center gap-1">
-                            <Input type="number" value={discountPercentage} onChange={e => setDiscountPercentage(Number(e.target.value))} className="w-16 h-7 text-sm" aria-label="Discount percentage"/> %
-                        </div>
-                    </div>
+                    {discountAmount > 0 && <div className="flex justify-between text-destructive"><span>Discount ({discountPercentage}%):</span> <span>-${discountAmount.toFixed(2)}</span></div>}
+                    <div className="flex justify-between"><span>Subtotal after Discount:</span> <span>${subtotalAfterDiscount.toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span>Tip:</span> <span>${tipAmount.toFixed(2)}</span></div>
                     <div className="flex justify-between"><span>Tax ({(IVA_RATE * 100).toFixed(0)}%):</span> <span>${taxAmount.toFixed(2)}</span></div>
                     <div className="flex justify-between font-bold text-lg text-primary mt-2"><span>Grand Total:</span> <span>${totalAmount.toFixed(2)}</span></div>
                 </div>
 
                 <Separator />
                 
-                <div className="p-4 border border-dashed rounded-md text-center">
-                    <p className="text-muted-foreground text-sm">Payment splitting options (by item, manual, percentage, clients) will be available here soon.</p>
+                <div className="space-y-4">
+                    <Label className="font-headline">Payment Splitting (Mock)</Label>
+                    <Select value={paymentSplitType} onValueChange={(value) => setPaymentSplitType(value as PaymentSplitType)}>
+                        <SelectTrigger aria-label="Payment Split Type">
+                            <SelectValue placeholder="No Split" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="none">No Split</SelectItem>
+                            <SelectItem value="equal">Split Equally</SelectItem>
+                            <SelectItem value="by_item">Split by Item</SelectItem>
+                            {/* <SelectItem value="by_customer_bill">Split by Customer Bill (Concept)</SelectItem> */}
+                        </SelectContent>
+                    </Select>
+                    {paymentSplitType === 'equal' && (
+                        <div className="flex items-center gap-2">
+                            <Label htmlFor="splitWays">Number of Ways:</Label>
+                            <Input id="splitWays" type="number" value={paymentSplitWays} onChange={e => setPaymentSplitWays(Math.max(2, parseInt(e.target.value)))} min="2" className="w-20 h-8" />
+                            <span>(Approx. ${(totalAmount / paymentSplitWays).toFixed(2)} each)</span>
+                        </div>
+                    )}
+                    {paymentSplitType === 'by_item' && (
+                        <p className="text-xs text-muted-foreground">Select items in the summary above to assign them to the current split/invoice. (Mock: This would typically involve more complex UI to manage multiple sub-invoices).</p>
+                    )}
                 </div>
+
 
                 <Separator />
 
                 <div className="space-y-3">
-                    <Label>Payment Method</Label>
-                    <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                    <Label className="font-headline">Payment Method</Label>
+                    <Select value={paymentMethod} onValueChange={setPaymentMethod} disabled={isCourtesy}>
                         <SelectTrigger aria-label="Payment Method">
                             <SelectValue placeholder="Select Payment" />
                         </SelectTrigger>
@@ -458,17 +608,36 @@ function OrdersPageContent() {
                     </Select>
 
                     {dteType === 'credito_fiscal' && (
-                        <>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-3 border rounded-md">
                             <Input placeholder="NIT Cliente" value={dteNit} onChange={e => setDteNit(e.target.value)} aria-label="DTE NIT Cliente" />
                             <Input placeholder="NRC Cliente" value={dteNrc} onChange={e => setDteNrc(e.target.value)} aria-label="DTE NRC Cliente" />
                             <Input placeholder="Nombre Cliente" value={dteCustomerName} onChange={e => setDteCustomerName(e.target.value)} aria-label="DTE Customer Name"/>
-                        </>
+                        </div>
                     )}
+                </div>
+
+                 <Separator />
+                <div className="space-y-3">
+                    <Label className="font-headline">Order Actions</Label>
+                    <div className="flex flex-wrap gap-4 items-center">
+                        <div className="flex items-center space-x-2">
+                            <Checkbox id="isCourtesy" checked={isCourtesy} onCheckedChange={(checked) => {setIsCourtesy(!!checked); if(!!checked) setSelectedDiscountId(undefined);}} />
+                            <Label htmlFor="isCourtesy" className="flex items-center"><CircleDollarSign className="mr-1 h-4 w-4 text-green-500"/>Mark as Courtesy</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <Checkbox id="isOnHold" checked={isOnHold} onCheckedChange={(checked) => setIsOnHold(!!checked)} />
+                            <Label htmlFor="isOnHold" className="flex items-center"><WalletCards className="mr-1 h-4 w-4 text-yellow-500"/>Hold Bill</Label>
+                        </div>
+                         <div className="flex items-center space-x-2">
+                            <Checkbox id="disableReceiptPrint" checked={disableReceiptPrint} onCheckedChange={(checked) => setDisableReceiptPrint(!!checked)} />
+                            <Label htmlFor="disableReceiptPrint" className="flex items-center"><EyeSlash className="mr-1 h-4 w-4"/>No Receipt Print</Label>
+                        </div>
+                    </div>
                 </div>
             </CardContent>
             <CardFooter className="border-t pt-4">
-                 <Button className="w-full" size="lg" onClick={() => alert('Order Finalized (Mock)')}>
-                    <Save className="mr-2 h-5 w-5" /> Finalize &amp; Pay
+                 <Button className="w-full" size="lg" onClick={handleFinalizeAndPay} disabled={isOnHold && !isCourtesy /* Allow finalizing courtesy order even if on hold */}>
+                    <Save className="mr-2 h-5 w-5" /> {isCourtesy ? "Finalize as Courtesy" : isOnHold ? "Order is ON HOLD" : "Finalize & Pay"}
                  </Button>
             </CardFooter>
          </Card>

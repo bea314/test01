@@ -37,14 +37,23 @@ export interface OrderItem {
   status: 'pending' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
 }
 
+export interface DTEInvoiceInfo {
+  nit: string;
+  nrc: string;
+  customerName: string;
+  // Add other DTE specific fields as required
+}
+
+export type PaymentSplitType = 'none' | 'equal' | 'by_item' | 'by_customer_bill';
+
 export interface Order {
   id: string;
   tableId?: string;
   waiterId: string;
   orderType: OrderType;
-  numberOfGuests?: number; // Added for Dine-in
+  numberOfGuests?: number;
   items: OrderItem[];
-  status: 'open' | 'pending_payment' | 'paid' | 'completed' | 'cancelled';
+  status: 'open' | 'pending_payment' | 'paid' | 'completed' | 'cancelled' | 'on_hold';
   subtotal: number;
   taxAmount: number;
   tipAmount: number;
@@ -55,14 +64,13 @@ export interface Order {
   dteType?: 'consumidor_final' | 'credito_fiscal';
   createdAt: string;
   updatedAt: string;
+  isCourtesy?: boolean;
+  disableReceiptPrint?: boolean;
+  selectedDiscountId?: string;
+  paymentSplitType?: PaymentSplitType;
+  paymentSplitWays?: number; // For 'equal' split
 }
 
-export interface DTEInvoiceInfo {
-  nit: string;
-  nrc: string;
-  customerName: string;
-  // Add other DTE specific fields as required
-}
 
 export interface MenuItemCategory {
   id: string;
@@ -106,7 +114,6 @@ export interface Waiter {
   name: string;
 }
 
-// For settings page - financial documents
 export interface BusinessFinancialInfo {
   businessName: string;
   legalName: string;
@@ -125,4 +132,11 @@ export interface KitchenPrinter {
   id: string;
   name: string;
   ipAddress: string;
+}
+
+export interface DiscountPreset {
+  id: string;
+  name: string;
+  percentage: number; // e.g., 15 for 15%
+  description?: string;
 }
