@@ -58,7 +58,19 @@ export interface ProcessedPaymentSplit {
   dteInvoiceInfo?: DTEInvoiceInfo;
 }
 
-export interface Order {
+export interface OrderTotals {
+  subtotal: number;
+  taxAmount: number;
+  tipAmount: number;
+  discountAmount: number;
+  manualDiscountAmount?: number;
+  totalAmount: number;
+  appliedPresetDiscountValue: number;
+  appliedManualDiscountValue: number;
+}
+
+
+export interface Order extends OrderTotals {
   id: string;
   tableId?: string;
   waiterId: string;
@@ -66,12 +78,6 @@ export interface Order {
   numberOfGuests?: number;
   items: OrderItem[];
   status: 'open' | 'pending_payment' | 'paid' | 'completed' | 'cancelled' | 'on_hold';
-  subtotal: number;
-  taxAmount: number;
-  tipAmount: number;
-  discountAmount: number;
-  manualDiscountAmount?: number; // For manual dollar discount
-  totalAmount: number;
   paymentMethod?: 'cash' | 'credit_card' | 'digital_wallet'; // Overall if not split
   dteInvoiceInfo?: DTEInvoiceInfo; // Overall if not split
   dteType?: 'consumidor_final' | 'credito_fiscal'; // Overall if not split
@@ -159,4 +165,7 @@ export interface DiscountPreset {
   applicableItemIds?: string[];
   applicableCategoryIds?: string[];
 }
+
+// Tip mode for checkout
+export type TipMode = 'default' | 'percentage' | 'manual';
 
