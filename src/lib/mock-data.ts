@@ -177,52 +177,52 @@ export let initialTables: RestaurantTable[] = [
 
 export const calculateOrderTotals = (
     orderInput: Partial<Order> & { items: OrderItem[] },
-    appliedPresetDiscount: DiscountPreset | null, // Use the actual applied preset object
-    appliedManualDiscountAmount: number // Use the actual applied manual amount
+    actuallyAppliedPreset: DiscountPreset | null,
+    actuallyAppliedManualAmount: number
   ): OrderTotals => {
     const activeItems = orderInput.items.filter(item => item.status !== 'cancelled');
-    
-    const subtotal = activeItems.reduce((sum, item) => {
+
+    const subtotalAfterItemCourtesies = activeItems.reduce((sum, item) => {
       return sum + (item.isCourtesy ? 0 : item.price * item.quantity);
     }, 0);
-  
+
     let currentAppliedPresetDiscountValue = 0;
-    if (!orderInput.isCourtesy && appliedPresetDiscount) {
+    if (!orderInput.isCourtesy && actuallyAppliedPreset) {
       let discountableSubtotalForPreset = 0;
-      if (appliedPresetDiscount.applicableItemIds && appliedPresetDiscount.applicableItemIds.length > 0) {
+      if (actuallyAppliedPreset.applicableItemIds && actuallyAppliedPreset.applicableItemIds.length > 0) {
         discountableSubtotalForPreset = activeItems
-          .filter(item => !item.isCourtesy && appliedPresetDiscount.applicableItemIds!.includes(item.menuItemId))
+          .filter(item => !item.isCourtesy && actuallyAppliedPreset.applicableItemIds!.includes(item.menuItemId))
           .reduce((sum, item) => sum + item.price * item.quantity, 0);
-      } else if (appliedPresetDiscount.applicableCategoryIds && appliedPresetDiscount.applicableCategoryIds.length > 0) {
+      } else if (actuallyAppliedPreset.applicableCategoryIds && actuallyAppliedPreset.applicableCategoryIds.length > 0) {
          const itemCategories = activeItems.map(item => initialMenuItems.find(mi => mi.id === item.menuItemId)?.category.id);
          discountableSubtotalForPreset = activeItems
-           .filter((item, index) => !item.isCourtesy && appliedPresetDiscount.applicableCategoryIds!.includes(itemCategories[index] || ''))
+           .filter((item, index) => !item.isCourtesy && actuallyAppliedPreset.applicableCategoryIds!.includes(itemCategories[index] || ''))
            .reduce((sum, item) => sum + item.price * item.quantity, 0);
       } else { // Discount applies to all non-courtesy items
         discountableSubtotalForPreset = activeItems
           .filter(item => !item.isCourtesy)
           .reduce((sum, item) => sum + item.price * item.quantity, 0);
       }
-      currentAppliedPresetDiscountValue = discountableSubtotalForPreset * (appliedPresetDiscount.percentage / 100);
+      currentAppliedPresetDiscountValue = discountableSubtotalForPreset * (actuallyAppliedPreset.percentage / 100);
     }
-    
-    const subtotalAfterPresetDiscount = subtotal - currentAppliedPresetDiscountValue;
+
+    const subtotalAfterPresetDiscount = subtotalAfterItemCourtesies - currentAppliedPresetDiscountValue;
     let currentAppliedManualDiscountValue = 0;
-    if (!orderInput.isCourtesy && appliedManualDiscountAmount > 0) {
-      currentAppliedManualDiscountValue = Math.min(subtotalAfterPresetDiscount, appliedManualDiscountAmount);
+    if (!orderInput.isCourtesy && actuallyAppliedManualAmount > 0) {
+      currentAppliedManualDiscountValue = Math.min(subtotalAfterPresetDiscount, actuallyAppliedManualAmount);
     }
-  
-    const finalDiscountAmount = orderInput.isCourtesy ? subtotal : currentAppliedPresetDiscountValue + currentAppliedManualDiscountValue;
-    const subtotalAfterAllDiscounts = subtotal - finalDiscountAmount;
-    
+
+    const finalTotalDiscountAmount = orderInput.isCourtesy ? subtotalAfterItemCourtesies : currentAppliedPresetDiscountValue + currentAppliedManualDiscountValue;
+    const subtotalAfterAllDiscounts = subtotalAfterItemCourtesies - finalTotalDiscountAmount;
+
     const taxAmount = orderInput.isCourtesy ? 0 : subtotalAfterAllDiscounts * IVA_RATE;
     const tipAmount = orderInput.isCourtesy ? 0 : orderInput.tipAmount || 0;
-    
+
     const totalAmount = subtotalAfterAllDiscounts + taxAmount + tipAmount;
-  
+
     return {
-      subtotal,
-      discountAmount: finalDiscountAmount,
+      subtotal: subtotalAfterItemCourtesies,
+      discountAmount: finalTotalDiscountAmount,
       taxAmount,
       tipAmount,
       totalAmount,
@@ -247,40 +247,38 @@ export const addActiveOrder = (newOrderData: Omit<Order, 'id' | 'createdAt' | 'u
       orderType: newOrderData.orderType,
       numberOfGuests: newOrderData.numberOfGuests,
       items: orderItems,
-      // status: newOrderData.isOnHold ? 'on_hold' : 'open', // Status will be set by finalizePayment or first save
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      tipAmount: newOrderData.tipAmount || 0, // Initial tip can be 0
+      tipAmount: newOrderData.tipAmount || 0,
       isCourtesy: newOrderData.isCourtesy || false,
       isOnHold: newOrderData.isOnHold || false,
       disableReceiptPrint: newOrderData.disableReceiptPrint || false,
-      
-      // Staged discount info from order creation (if any, usually none at this point)
-      selectedDiscountId: newOrderData.selectedDiscountId, 
-      appliedCouponCode: newOrderData.appliedCouponCode,
-      manualDiscountAmount: newOrderData.manualDiscountAmount || 0,
 
-      // Applied discount info (initially none)
-      appliedPresetDiscount: newOrderData.appliedPresetDiscount || null, // Should be null initially
-      // appliedManualDiscountValue will be calculated
+      // For a new order, applied discounts are typically null/0
+      appliedPresetDiscount: null,
+      appliedManualDiscountValue: 0,
+      // Staged discounts might also be cleared or not set at initial creation
+      selectedDiscountId: undefined,
+      appliedCouponCode: undefined,
+      manualDiscountAmount: 0,
+
 
       paymentSplitType: newOrderData.paymentSplitType || 'none',
       paymentSplitWays: newOrderData.paymentSplitWays,
       processedSplits: [],
-      status: 'open', // Default status for a new order sent to kitchen
+      status: 'open',
   };
-  
-  // Calculate totals using the initial (likely zero) applied discounts
+
   const totals = calculateOrderTotals(
-    baseOrder as Order, // Cast because baseOrder is partial until totals are added
+    baseOrder as Order,
     baseOrder.appliedPresetDiscount || null,
-    baseOrder.manualDiscountAmount || 0 // Pass the manual amount directly
+    baseOrder.appliedManualDiscountValue || 0 // This should be 0 for a new order
   );
-  
+
   const newOrder: Order = {
     ...baseOrder,
     ...totals,
-  } as Order; // Final cast to Order type
+  } as Order;
 
   mockActiveOrders.unshift(newOrder);
   return newOrder;
@@ -289,36 +287,32 @@ export const addActiveOrder = (newOrderData: Omit<Order, 'id' | 'createdAt' | 'u
 export const updateActiveOrder = (updatedOrderData: Partial<Order> & { id: string }) => {
   const index = mockActiveOrders.findIndex(o => o.id === updatedOrderData.id);
   if (index !== -1) {
-    // Preserve existing applied discounts if not explicitly changed by updatedOrderData
     const existingOrder = mockActiveOrders[index];
-    const appliedPreset = 'appliedPresetDiscount' in updatedOrderData 
-        ? updatedOrderData.appliedPresetDiscount 
+
+    // Determine the correct preset and manual discount values for calculation
+    const presetForCalc = 'appliedPresetDiscount' in updatedOrderData
+        ? updatedOrderData.appliedPresetDiscount
         : existingOrder.appliedPresetDiscount;
-    
-    // If manualDiscountAmount is in updatedOrderData, it's the new staged/applied value.
-    // Otherwise, use the existing order's appliedManualDiscountValue.
-    // Note: Order type stores `manualDiscountAmount` as the user-inputted value,
-    // while `appliedManualDiscountValue` is the calculated effect.
-    // For calculation, we need the intended *input* if changing, or existing *effect* if not.
-    // This logic might need refinement based on how manual discounts are intended to persist vs be re-applied.
-    // For now, assume updatedOrderData.manualDiscountAmount sets a new base for calculation.
-    const manualAmountForCalc = updatedOrderData.manualDiscountAmount !== undefined 
-        ? updatedOrderData.manualDiscountAmount 
-        : existingOrder.appliedManualDiscountValue; // Or existingOrder.manualDiscountAmount if we store the input there
 
+    // If updatedOrderData includes appliedManualDiscountValue, use that.
+    // Otherwise, use existing order's.
+    const manualValueForCalc = updatedOrderData.appliedManualDiscountValue !== undefined
+        ? updatedOrderData.appliedManualDiscountValue
+        : existingOrder.appliedManualDiscountValue;
 
-    const baseUpdatedOrder = { 
-        ...existingOrder, 
-        ...updatedOrderData, 
+    const baseUpdatedOrder = {
+        ...existingOrder,
+        ...updatedOrderData,
         updatedAt: new Date().toISOString(),
-        appliedPresetDiscount: appliedPreset, // Ensure appliedPresetDiscount is correctly carried or updated
-        // manualDiscountAmount: manualAmountForCalc // Ensure this is correctly set for re-calculation
+        // Ensure applied discounts are correctly carried or updated for re-calculation
+        appliedPresetDiscount: presetForCalc,
+        appliedManualDiscountValue: manualValueForCalc,
     };
-    
+
     const totals = calculateOrderTotals(
-        baseUpdatedOrder, 
-        baseUpdatedOrder.appliedPresetDiscount || null,
-        baseUpdatedOrder.manualDiscountAmount || 0 // Use the direct manual amount input from the update or existing
+        baseUpdatedOrder,
+        presetForCalc || null,
+        manualValueForCalc || 0
     );
     const fullyUpdatedOrder: Order = {
         ...baseUpdatedOrder,
@@ -399,7 +393,7 @@ export let mockActiveOrders: Order[] = [
     updatedAt: new Date().toISOString(),
     processedSplits: [],
   },
-  { 
+  {
     id: "orderXYZ",
     tableId: "t2",
     waiterId: "staff2",
@@ -418,9 +412,9 @@ export let mockActiveOrders: Order[] = [
   }
 ].map(order => { // Initialize all orders with calculated totals
     const totals = calculateOrderTotals(
-        order, 
-        order.appliedPresetDiscount || null, 
-        order.manualDiscountAmount || 0
+        order,
+        order.appliedPresetDiscount || null,
+        order.appliedManualDiscountValue || 0 // Use appliedManualDiscountValue for consistency
     );
     return { ...order, ...totals };
 });
