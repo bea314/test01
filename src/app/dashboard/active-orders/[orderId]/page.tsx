@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, User, Tag, Hash, Clock, Calendar, CreditCard, Percent, DollarSign, Receipt, Info, Utensils, Loader2, AlertTriangle, Users, CheckCircle, Edit3, Save, ShoppingBag, CircleDollarSign, WalletCards, EyeOff, PlusCircle, ArrowRight, Trash2, XCircle } from "lucide-react";
+import { ArrowLeft, User, Tag, Hash, Clock, Calendar, CreditCard, Percent, DollarSign, Receipt, Info, Utensils, Loader2, AlertTriangle, Users, CheckCircle, Edit3, Save, ShoppingBag, CircleDollarSign, WalletCards, EyeOff, PlusCircle, ArrowRight, Trash2, XCircle, Settings } from "lucide-react";
 import type { Order, OrderItem, RestaurantTable } from '@/lib/types';
 import { mockActiveOrders, initialStaff, initialTables, updateActiveOrder, calculateOrderTotals, initialMenuItems } from '@/lib/mock-data';
 import { IVA_RATE } from '@/lib/constants';
@@ -146,7 +146,7 @@ export default function OrderDetailsPage() {
     }
 
     if (action === 'isOnHold') {
-        updatedOrderPartial.status = value ? 'on_hold' : 'open'; // Example status change
+        updatedOrderPartial.status = value ? 'on_hold' : (order.status === 'on_hold' ? 'open' : order.status); 
     }
     
     const updatedOrderResult = updateActiveOrder(updatedOrderPartial);
