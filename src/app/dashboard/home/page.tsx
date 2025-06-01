@@ -23,7 +23,7 @@ const QuickActionCard: React.FC<QuickActionProps> = ({ title, description, icon:
       </div>
     </CardHeader>
     <CardContent className="flex flex-col flex-grow p-4 pt-0">
-      <p className="text-sm text-muted-foreground mb-4">{description}</p>
+      <p className="text-sm text-muted-foreground mb-4 flex-grow">{description}</p>
       <div className="mt-auto">
         <Button asChild variant={"default"} className="w-full">
           <Link href={href}>
@@ -40,7 +40,7 @@ const SecondaryActionListItem: React.FC<Omit<QuickActionProps, 'isPrimary'>> = (
   <li>
     <Link href={href} className="block p-4 border rounded-lg hover:bg-muted/5 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-ring">
       <div className="flex items-center gap-4">
-        <Icon className="h-7 w-7 text-primary flex-shrink-0" />
+        <Icon className="h-7 w-7 text-muted-foreground flex-shrink-0" /> {/* Changed text-primary to text-muted-foreground */}
         <div className="flex-1">
           <h3 className="font-semibold text-md">{title}</h3>
           <p className="text-sm text-muted-foreground">{description}</p>
@@ -128,3 +128,4 @@ export default function HomePage() {
     </div>
   );
 }
+
