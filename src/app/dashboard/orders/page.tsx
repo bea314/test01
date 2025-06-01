@@ -10,14 +10,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard, Users, Percent, WalletCards, CircleDollarSign, EyeOff, StickyNote } from "lucide-react";
+import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard, Users, Percent, WalletCards, CircleDollarSign, EyeOff, StickyNote, Hash } from "lucide-react";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import type { OrderItem, MenuItem as MenuItemType, OrderType, Waiter, Order, AllergyTag, PaymentSplitType, DiscountPreset } from '@/lib/types';
+import type { OrderItem, MenuItem as MenuItemType, OrderType, Waiter, Order, AllergyTag, PaymentSplitType, DiscountPreset, RestaurantTable } from '@/lib/types';
 import { IVA_RATE, DEFAULT_TIP_PERCENTAGE } from '@/lib/constants';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
-import { initialMenuItems as mockMenuItemsAll, mockCategories as mockMenuCategories, initialStaff, mockPresetDiscounts } from '@/lib/mock-data';
+import { initialMenuItems as mockMenuItemsAll, mockCategories as mockMenuCategories, initialStaff, mockPresetDiscounts, initialTables } from '@/lib/mock-data';
 import {
   Dialog,
   DialogContent,
@@ -45,24 +45,24 @@ type TipMode = 'default' | 'percentage' | 'manual';
 function OrdersPageContent() {
   const searchParams = useSearchParams();
   const initialOrderTypeParam = searchParams.get('type') as OrderType | null;
+  const initialTableIdParam = searchParams.get('tableId') as string | null;
   const { toast } = useToast();
 
   const [currentStep, setCurrentStep] = useState<OrderStep>('building');
   const [currentOrderItems, setCurrentOrderItems] = useState<OrderItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | undefined>(undefined);
+  const [selectedCategory, setSelectedCategory] = useState<string | 'all'>('all'); // Changed from undefined to 'all' for clarity
   const [menuView, setMenuView] = useState<MenuView>('grid');
   
   const [orderType, setOrderType] = useState<OrderType>(initialOrderTypeParam || 'Dine-in');
-  const [numberOfGuests, setNumberOfGuests] = useState<number | undefined>(1); // Default to 1 for Dine-in
+  const [selectedTableId, setSelectedTableId] = useState<string | undefined>(initialTableIdParam || undefined);
+  const [numberOfGuests, setNumberOfGuests] = useState<number | undefined>(1);
   const [selectedWaiter, setSelectedWaiter] = useState<string | undefined>(initialStaff[0]?.id);
   
-  // Tip state
   const [tipMode, setTipMode] = useState<TipMode>('default');
   const [customTipPercentage, setCustomTipPercentage] = useState<number>(DEFAULT_TIP_PERCENTAGE);
   const [manualTipAmount, setManualTipAmount] = useState<number>(0);
 
-  // Discount state
   const [selectedDiscountId, setSelectedDiscountId] = useState<string | undefined>(undefined);
 
   const [paymentMethod, setPaymentMethod] = useState<string | undefined>(undefined);
@@ -75,31 +75,43 @@ function OrdersPageContent() {
   const [editingObservationItem, setEditingObservationItem] = useState<OrderItem | null>(null);
   const [currentObservationText, setCurrentObservationText] = useState('');
 
-  // Order actions state
   const [isCourtesy, setIsCourtesy] = useState(false);
   const [isOnHold, setIsOnHold] = useState(false);
   const [disableReceiptPrint, setDisableReceiptPrint] = useState(false);
 
-  // Payment splitting state
   const [paymentSplitType, setPaymentSplitType] = useState<PaymentSplitType>('none');
   const [paymentSplitWays, setPaymentSplitWays] = useState<number>(2);
   const [itemsToSplit, setItemsToSplit] = useState<Record<string, boolean>>({});
 
 
   useEffect(() => {
-    if (initialOrderTypeParam) {
-      setOrderType(initialOrderTypeParam);
-      if (initialOrderTypeParam !== 'Dine-in') {
+    const typeParam = searchParams.get('type') as OrderType | null;
+    const tableIdParam = searchParams.get('tableId') as string | null;
+
+    if (typeParam) {
+      setOrderType(typeParam);
+      if (typeParam !== 'Dine-in') {
         setNumberOfGuests(undefined);
+        setSelectedTableId(undefined); // Clear table if not Dine-in
       } else {
         setNumberOfGuests(numberOfGuests === undefined ? 1 : numberOfGuests);
+        if (tableIdParam) {
+          setSelectedTableId(tableIdParam);
+        }
       }
+    } else { // Default to Dine-in if no type is specified
+        setOrderType('Dine-in');
+        setNumberOfGuests(numberOfGuests === undefined ? 1 : numberOfGuests);
+        if (tableIdParam) {
+          setSelectedTableId(tableIdParam);
+        }
     }
-  }, [initialOrderTypeParam, numberOfGuests]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]); // Re-run when searchParams change
 
   const addItemToOrder = (menuItem: MenuItemType) => {
     setCurrentOrderItems(prevItems => {
-      const existingItem = prevItems.find(item => item.menuItemId === menuItem.id && !item.observations); // Only merge if no unique observation
+      const existingItem = prevItems.find(item => item.menuItemId === menuItem.id && !item.observations); 
       if (existingItem) {
         return prevItems.map(item =>
           item.menuItemId === menuItem.id && !item.observations ? { ...item, quantity: item.quantity + 1 } : item
@@ -170,7 +182,7 @@ function OrdersPageContent() {
     (item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (item.number && item.number.toLowerCase().includes(searchTerm.toLowerCase()))) &&
     item.availability === 'available'
-  ).filter(item => selectedCategory && selectedCategory !== 'all' ? item.category.id === selectedCategory : true);
+  ).filter(item => selectedCategory !== 'all' ? item.category.id === selectedCategory : true);
 
   const handleProceedToCheckout = () => {
     if (currentOrderItems.length === 0) {
@@ -180,6 +192,10 @@ function OrdersPageContent() {
     if (isOnHold) {
         toast({ title: "Order on Hold", description: "This order is currently on hold. Resolve hold status to proceed.", variant: "destructive" });
         return;
+    }
+     if (orderType === 'Dine-in' && !selectedTableId) {
+      toast({ title: "Table Required", description: "Please select a table for this Dine-in order.", variant: "destructive" });
+      return;
     }
     setCurrentStep('checkout');
   }
@@ -237,9 +253,14 @@ function OrdersPageContent() {
               <CardTitle className="font-headline flex items-center"><ShoppingCart className="mr-2 h-5 w-5"/>Current Order</CardTitle>
               <div className="grid grid-cols-2 gap-2 mt-2">
                   <Select value={orderType} onValueChange={(value) => {
-                      setOrderType(value as OrderType);
-                      if (value !== 'Dine-in') setNumberOfGuests(undefined);
-                      else if (numberOfGuests === undefined) setNumberOfGuests(1);
+                      const newOrderType = value as OrderType;
+                      setOrderType(newOrderType);
+                      if (newOrderType !== 'Dine-in') {
+                        setNumberOfGuests(undefined);
+                        setSelectedTableId(undefined);
+                      } else if (numberOfGuests === undefined) {
+                        setNumberOfGuests(1);
+                      }
                   }}>
                       <SelectTrigger aria-label="Order Type">
                           <SelectValue placeholder="Order Type" />
@@ -260,17 +281,32 @@ function OrdersPageContent() {
                   </Select>
               </div>
               {orderType === 'Dine-in' && (
-                <div className="mt-2">
-                  <Label htmlFor="numberOfGuests">Number of Guests</Label>
-                  <Input 
-                    id="numberOfGuests" 
-                    type="number" 
-                    value={numberOfGuests || ''} 
-                    onChange={e => setNumberOfGuests(e.target.value ? parseInt(e.target.value) : undefined)} 
-                    placeholder="e.g., 4"
-                    min="1"
-                    className="h-9"
-                  />
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <div>
+                    <Label htmlFor="selectedTable">Table</Label>
+                     <Select value={selectedTableId} onValueChange={setSelectedTableId}>
+                        <SelectTrigger id="selectedTable" aria-label="Select Table">
+                            <SelectValue placeholder="Select Table" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {initialTables.filter(t => t.status === 'available' || t.status === 'reserved' || t.id === selectedTableId).map(table => (
+                                <SelectItem key={table.id} value={table.id}>{table.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="numberOfGuests">Guests</Label>
+                    <Input 
+                        id="numberOfGuests" 
+                        type="number" 
+                        value={numberOfGuests || ''} 
+                        onChange={e => setNumberOfGuests(e.target.value ? parseInt(e.target.value) : undefined)} 
+                        placeholder="e.g., 4"
+                        min="1"
+                        className="h-9"
+                    />
+                  </div>
                 </div>
               )}
             </CardHeader>
@@ -340,7 +376,7 @@ function OrdersPageContent() {
               </CardContent>
             </ScrollArea>
             <CardFooter className="flex-col gap-2 mt-auto border-t pt-4">
-               <Button className="w-full" size="lg" onClick={handleProceedToCheckout} disabled={isOnHold}>
+               <Button className="w-full" size="lg" onClick={handleProceedToCheckout} disabled={isOnHold && currentStep === 'building'}>
                   Proceed to Checkout <ArrowRight className="ml-2 h-5 w-5" />
                </Button>
                <Button variant="outline" className="w-full" onClick={handleSendToKitchen}>Send to Kitchen (Mock)</Button>
@@ -371,7 +407,7 @@ function OrdersPageContent() {
                   className="max-w-xs"
                   aria-label="Search menu items"
                 />
-                <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <Select value={selectedCategory} onValueChange={(value) => setSelectedCategory(value as string | 'all')}>
                   <SelectTrigger className="w-[180px]" aria-label="Filter by category">
                     <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
@@ -509,7 +545,7 @@ function OrdersPageContent() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-3">
                         <Label className="font-headline">Tip Options</Label>
-                        <RadioGroup value={tipMode} onValueChange={(value) => setTipMode(value as TipMode)}>
+                        <RadioGroup value={tipMode} onValueChange={(value) => setTipMode(value as TipMode)} disabled={isCourtesy}>
                             <div className="flex items-center space-x-2">
                                 <RadioGroupItem value="default" id="tipDefault" />
                                 <Label htmlFor="tipDefault">Default ({DEFAULT_TIP_PERCENTAGE}%)</Label>
@@ -528,7 +564,7 @@ function OrdersPageContent() {
                     </div>
                     <div className="space-y-3">
                          <Label className="font-headline">Discount Options</Label>
-                         <Select value={selectedDiscountId} onValueChange={(value) => {setSelectedDiscountId(value === 'none' ? undefined : value); setIsCourtesy(false);}} >
+                         <Select value={selectedDiscountId} onValueChange={(value) => {setSelectedDiscountId(value === 'none' ? undefined : value); setIsCourtesy(false);}} disabled={isCourtesy} >
                             <SelectTrigger aria-label="Select Discount">
                                 <SelectValue placeholder="No Discount" />
                             </SelectTrigger>
@@ -544,7 +580,8 @@ function OrdersPageContent() {
                  <Separator />
                  <div className="space-y-2 text-sm">
                     <div className="flex justify-between"><span>Subtotal:</span> <span>${subtotal.toFixed(2)}</span></div>
-                    {discountAmount > 0 && <div className="flex justify-between text-destructive"><span>Discount ({discountPercentage}%):</span> <span>-${discountAmount.toFixed(2)}</span></div>}
+                    {discountAmount > 0 && !isCourtesy && <div className="flex justify-between text-destructive"><span>Discount ({discountPercentage}%):</span> <span>-${discountAmount.toFixed(2)}</span></div>}
+                     {isCourtesy && <div className="flex justify-between text-green-600"><span>Courtesy Discount (100%):</span> <span>-${subtotal.toFixed(2)}</span></div>}
                     <div className="flex justify-between"><span>Subtotal after Discount:</span> <span>${subtotalAfterDiscount.toFixed(2)}</span></div>
                     <div className="flex justify-between"><span>Tip:</span> <span>${tipAmount.toFixed(2)}</span></div>
                     <div className="flex justify-between"><span>Tax ({(IVA_RATE * 100).toFixed(0)}%):</span> <span>${taxAmount.toFixed(2)}</span></div>
@@ -555,7 +592,7 @@ function OrdersPageContent() {
                 
                 <div className="space-y-4">
                     <Label className="font-headline">Payment Splitting (Mock)</Label>
-                    <Select value={paymentSplitType} onValueChange={(value) => setPaymentSplitType(value as PaymentSplitType)}>
+                    <Select value={paymentSplitType} onValueChange={(value) => setPaymentSplitType(value as PaymentSplitType)} disabled={isCourtesy}>
                         <SelectTrigger aria-label="Payment Split Type">
                             <SelectValue placeholder="No Split" />
                         </SelectTrigger>
@@ -621,7 +658,18 @@ function OrdersPageContent() {
                     <Label className="font-headline">Order Actions</Label>
                     <div className="flex flex-wrap gap-4 items-center">
                         <div className="flex items-center space-x-2">
-                            <Checkbox id="isCourtesy" checked={isCourtesy} onCheckedChange={(checked) => {setIsCourtesy(!!checked); if(!!checked) setSelectedDiscountId(undefined);}} />
+                            <Checkbox id="isCourtesy" checked={isCourtesy} onCheckedChange={(checked) => {
+                                setIsCourtesy(!!checked); 
+                                if(!!checked) {
+                                    setSelectedDiscountId(undefined); // Clear any other discount
+                                    setTipMode('default'); // Reset tip
+                                    setManualTipAmount(0); 
+                                    setCustomTipPercentage(DEFAULT_TIP_PERCENTAGE);
+                                    // Payment method can be cleared or disabled
+                                    setPaymentMethod(undefined);
+                                    setPaymentSplitType('none');
+                                }
+                            }} />
                             <Label htmlFor="isCourtesy" className="flex items-center"><CircleDollarSign className="mr-1 h-4 w-4 text-green-500"/>Mark as Courtesy</Label>
                         </div>
                         <div className="flex items-center space-x-2">
@@ -653,6 +701,3 @@ export default function OrdersPage() {
     </Suspense>
   )
 }
-
-
-    
