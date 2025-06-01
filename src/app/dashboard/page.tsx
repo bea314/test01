@@ -2,6 +2,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Edit3, Eye } from "lucide-react";
+import { cn } from '@/lib/utils';
 
 // Mock data for tables
 const mockTables = [
@@ -32,11 +33,15 @@ export default function DashboardPage() {
         {mockTables.map((table) => (
           <Card 
             key={table.id} 
-            className={`shadow-lg rounded-lg overflow-hidden transition-all hover:shadow-xl
-              ${table.status === 'occupied' ? 'border-primary bg-primary/10' : ''}
-              ${table.status === 'reserved' ? 'border-accent bg-accent/10' : ''}
-              ${table.status === 'available' ? 'border-border' : ''}
-            `}
+            className={cn(
+              "shadow-lg rounded-lg overflow-hidden transition-all hover:shadow-xl",
+              {
+                'border-green-500 bg-green-500/20': table.status === 'available',
+                'border-blue-500 bg-blue-500/20': table.status === 'occupied',
+                'border-yellow-500 bg-yellow-500/20': table.status === 'reserved',
+                'border-border': !['available', 'occupied', 'reserved'].includes(table.status) // Fallback
+              }
+            )}
           >
             <CardHeader className="pb-2">
               <CardTitle className="text-xl font-headline">{table.name}</CardTitle>
