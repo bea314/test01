@@ -1,5 +1,5 @@
 
-import type { MenuItem, MenuItemCategory, User, UserRole, RestaurantTable, AllergyTag } from '@/lib/types';
+import type { MenuItem, MenuItemCategory, User, UserRole, RestaurantTable, AllergyTag, Order } from '@/lib/types';
 
 export const mockCategories: MenuItemCategory[] = [
   { id: "cat1", name: "Appetizers" },
@@ -144,4 +144,50 @@ export const initialTables: RestaurantTable[] = [
   { id: "t3", name: "Patio Table A", status: "reserved", capacity: 6 },
   { id: "t4", name: "Corner Booth", status: "available", capacity: 5 },
   { id: "t5", name: "Bar Seat 5", status: "available", capacity: 1 },
+];
+
+export const mockActiveOrders: Order[] = [
+  {
+    id: "order001",
+    tableId: "T1",
+    waiterId: "staff2", // Bob The Builder
+    orderType: "Dine-in",
+    items: [
+      { id: "oi1", menuItemId: "item2", name: "Spaghetti Carbonara", quantity: 1, price: 18.00, modifiers: [], status: 'preparing', observations: "Extra cheese" },
+      { id: "oi2", menuItemId: "item7", name: "Iced Tea", quantity: 2, price: 3.50, modifiers: [], status: 'delivered' },
+    ],
+    status: "open", 
+    subtotal: (18.00 * 1) + (3.50 * 2), taxAmount: ((18.00 * 1) + (3.50 * 2)) * 0.13, tipAmount: 0, discountAmount: 0, 
+    totalAmount: ((18.00 * 1) + (3.50 * 2)) * 1.13,
+    createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(), 
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "order002",
+    waiterId: "staff4", // Diana Prince
+    orderType: "Takeout",
+    items: [
+      { id: "oi3", menuItemId: "item5", name: "Grilled Salmon", quantity: 1, price: 22.50, modifiers: [], status: 'ready' },
+      { id: "oi4", menuItemId: "item9", name: "Tomato Soup", quantity: 1, price: 7.50, modifiers: [], status: 'ready', observations: "No garlic bread" },
+    ],
+    status: "pending_payment",
+    subtotal: 22.50 + 7.50, taxAmount: (22.50 + 7.50) * 0.13, tipAmount: 0, discountAmount: 0, 
+    totalAmount: (22.50 + 7.50) * 1.13,
+    createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(), 
+    updatedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+  },
+  {
+    id: "order003",
+    tableId: "T5",
+    waiterId: "staff2", // Bob The Builder
+    orderType: "Dine-in",
+    items: [
+      { id: "oi5", menuItemId: "item1", name: "Bruschetta", quantity: 1, price: 9.50, modifiers: [{id: 'mod1', name: 'Extra Tomatoes', priceAdjustment: 0}], status: 'pending' },
+    ],
+    status: "open",
+    subtotal: 9.50, taxAmount: 9.50 * 0.13, tipAmount: 0, discountAmount: 0, 
+    totalAmount: 9.50 * 1.13,
+    createdAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(), 
+    updatedAt: new Date().toISOString(),
+  }
 ];

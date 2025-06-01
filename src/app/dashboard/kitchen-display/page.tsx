@@ -7,8 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Utensils, Clock, CheckCircle, Bell, Zap } from "lucide-react";
 import type { Order, OrderItem } from '@/lib/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { initialStaff } from '@/lib/mock-data'; // Assuming shared staff data
-import { mockActiveOrders as rawOrders } from '@/app/dashboard/active-orders/page'; // Re-use mock orders for now
+import { initialStaff, mockActiveOrders as rawOrders } from '@/lib/mock-data'; // Import from mock-data
 
 // Adapt mockActiveOrders for KDS - we might need to transform or use a different source later
 const initialKdsOrders: Order[] = JSON.parse(JSON.stringify(rawOrders)).map((order: Order) => ({
@@ -143,10 +142,3 @@ export default function KitchenDisplayPage() {
     </div>
   );
 }
-
-// Re-export mockActiveOrders if it's defined in active-orders/page.tsx and you want to use it here.
-// This is a bit of a hack for mock data sharing. Ideally, mock data is in its own file.
-// For this prototype, if mockActiveOrders is not exported from its original file,
-// this KitchenDisplayPage would need its own mock data source or import from lib/mock-data.ts
-export { rawOrders as mockActiveOrders }; // This line is problematic if mockActiveOrders is not exported.
-                                           // Assuming it will be moved to lib/mock-data.ts

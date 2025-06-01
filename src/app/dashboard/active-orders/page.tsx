@@ -8,51 +8,7 @@ import { Utensils, Clock, CheckCircle, Truck, User, AlertCircle } from "lucide-r
 import type { Order, OrderItem } from '@/lib/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { initialStaff } from '@/lib/mock-data'; // Import shared staff data
-
-const mockActiveOrders: Order[] = [
-  {
-    id: "order001",
-    tableId: "T1",
-    waiterId: "staff2", // Using ID from initialStaff (Bob The Builder)
-    orderType: "Dine-in",
-    items: [
-      { id: "oi1", menuItemId: "mi1", name: "Pizza Margherita", quantity: 1, price: 12.99, modifiers: [], status: 'preparing' },
-      { id: "oi2", menuItemId: "mi2", name: "Coke", quantity: 2, price: 2.50, modifiers: [], status: 'delivered' },
-    ],
-    status: "open", 
-    subtotal: 17.99, taxAmount: 2.34, tipAmount: 0, discountAmount: 0, totalAmount: 20.33,
-    createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(), 
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "order002",
-    waiterId: "staff4", // Using ID from initialStaff (Diana Prince)
-    orderType: "Takeout",
-    items: [
-      { id: "oi3", menuItemId: "mi3", name: "Sushi Platter", quantity: 1, price: 25.00, modifiers: [], status: 'ready' },
-      { id: "oi4", menuItemId: "mi4", name: "Miso Soup", quantity: 1, price: 3.50, modifiers: [], status: 'ready' },
-    ],
-    status: "pending_payment",
-    subtotal: 28.50, taxAmount: 3.71, tipAmount: 0, discountAmount: 0, totalAmount: 32.21,
-    createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(), 
-    updatedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "order003",
-    tableId: "T5",
-    waiterId: "staff2", // Using ID from initialStaff (Bob The Builder)
-    orderType: "Dine-in",
-    items: [
-      { id: "oi5", menuItemId: "mi5", name: "Steak Frites", quantity: 1, price: 28.75, modifiers: [{id: 'mod1', name: 'Medium Rare', priceAdjustment: 0}], status: 'pending' },
-    ],
-    status: "open",
-    subtotal: 28.75, taxAmount: 3.74, tipAmount: 0, discountAmount: 0, totalAmount: 32.49,
-    createdAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(), 
-    updatedAt: new Date().toISOString(),
-  }
-];
-
+import { initialStaff, mockActiveOrders as allMockOrders } from '@/lib/mock-data'; // Import shared staff and order data
 
 const OrderStatusBadge = ({ status }: { status: Order['status'] }) => {
   switch (status) {
@@ -81,7 +37,7 @@ export default function ActiveOrdersPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
-    setOrders(mockActiveOrders);
+    setOrders(allMockOrders); // Use imported mock orders
     const timer = setInterval(() => setCurrentTime(new Date()), 60000); // Update time every minute
     return () => clearInterval(timer);
   }, []);
