@@ -4,7 +4,6 @@ import { Toaster } from "@/components/ui/toaster";
 // import { Analytics } from "@firebase/analytics"; // Assuming firebase is setup elsewhere
 // import { app } from "@/lib/firebase"; // Assuming firebase config is in lib/firebase
 
-
 export const metadata: Metadata = {
   title: 'Tabletop AI',
   description: 'Restaurant Management System with AI Features',
@@ -15,7 +14,6 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  
   return (
     <html lang="en">
       <head>
