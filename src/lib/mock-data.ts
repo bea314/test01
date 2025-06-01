@@ -1,5 +1,6 @@
 
-import type { MenuItem, MenuItemCategory, User, UserRole, RestaurantTable, Order, DiscountPreset, KitchenPrinter } from '@/lib/types';
+import type { MenuItem, MenuItemCategory, User, UserRole, RestaurantTable, Order, DiscountPreset, KitchenPrinter, OrderItem } from '@/lib/types';
+import { IVA_RATE } from './constants';
 
 export let mockCategories: MenuItemCategory[] = [
   { id: "cat1", name: "Appetizers" },
@@ -174,18 +175,85 @@ export let initialTables: RestaurantTable[] = [
   { id: "t5", name: "Bar Seat 5", status: "available", capacity: 1 },
 ];
 
-// Function to add an order to the mockActiveOrders array
-export const addActiveOrder = (newOrder: Order) => {
-  mockActiveOrders.unshift(newOrder); // Add to the beginning
+export const calculateOrderTotals = (order: Order): Order => {
+  const activeItems = order.items.filter(item => item.status !== 'cancelled');
+  const subtotal = activeItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  let discountAmount = 0;
+  if (order.isCourtesy) {
+    discountAmount = subtotal;
+  } else if (order.selectedDiscountId) {
+    const discountPreset = mockPresetDiscounts.find(d => d.id === order.selectedDiscountId);
+    if (discountPreset) {
+      let discountableSubtotal = subtotal;
+      // Apply item/category specific discount logic
+      if (discountPreset.applicableItemIds && discountPreset.applicableItemIds.length > 0) {
+        discountableSubtotal = activeItems
+          .filter(item => discountPreset.applicableItemIds!.includes(item.menuItemId))
+          .reduce((sum, item) => sum + item.price * item.quantity, 0);
+      } else if (discountPreset.applicableCategoryIds && discountPreset.applicableCategoryIds.length > 0) {
+         const itemCategories = activeItems.map(item => initialMenuItems.find(mi => mi.id === item.menuItemId)?.category.id);
+         discountableSubtotal = activeItems
+           .filter((item, index) => discountPreset.applicableCategoryIds!.includes(itemCategories[index] || ''))
+           .reduce((sum, item) => sum + item.price * item.quantity, 0);
+      }
+      discountAmount = discountableSubtotal * (discountPreset.percentage / 100);
+    }
+  }
+  
+  const subtotalAfterDiscount = subtotal - discountAmount;
+  const taxAmount = order.isCourtesy ? 0 : subtotalAfterDiscount * IVA_RATE;
+  const tipAmount = order.isCourtesy ? 0 : order.tipAmount; // Tip is usually set manually or based on subtotalAfterDiscount
+  
+  const totalAmount = subtotalAfterDiscount + taxAmount + tipAmount;
+
+  return {
+    ...order,
+    subtotal,
+    discountAmount,
+    taxAmount,
+    // tipAmount is handled separately in checkout, or could be recalculated if needed
+    totalAmount,
+  };
 };
 
+
+// Function to add an order to the mockActiveOrders array
+export const addActiveOrder = (newOrderData: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'subtotal' | 'taxAmount' | 'totalAmount' | 'discountAmount'> & { items: Omit<OrderItem, 'id'>[] }) => {
+  const newOrderId = `order${Date.now()}`;
+  let newOrder: Order = {
+    ...newOrderData,
+    id: newOrderId,
+    items: newOrderData.items.map(item => ({
+        ...item, 
+        id: `oi-${newOrderId}-${item.menuItemId}-${Math.random().toString(36).substring(2, 9)}`
+    })),
+    status: newOrderData.isOnHold ? 'on_hold' : 'open',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    subtotal: 0, // Will be calculated
+    taxAmount: 0, // Will be calculated
+    tipAmount: newOrderData.tipAmount || 0, // Initialize tip amount
+    discountAmount: 0, // Will be calculated
+    totalAmount: 0, // Will be calculated
+  };
+  newOrder = calculateOrderTotals(newOrder);
+  mockActiveOrders.unshift(newOrder); 
+  return newOrder;
+};
+
+
 // Function to update an existing order
-export const updateActiveOrder = (updatedOrder: Order) => {
-  const index = mockActiveOrders.findIndex(o => o.id === updatedOrder.id);
+export const updateActiveOrder = (updatedOrderData: Partial<Order> & { id: string }) => {
+  const index = mockActiveOrders.findIndex(o => o.id === updatedOrderData.id);
   if (index !== -1) {
-    mockActiveOrders[index] = updatedOrder;
+    let orderToUpdate = { ...mockActiveOrders[index], ...updatedOrderData, updatedAt: new Date().toISOString() };
+    orderToUpdate = calculateOrderTotals(orderToUpdate);
+    mockActiveOrders[index] = orderToUpdate;
+    return orderToUpdate;
   } else {
-    console.warn(`Order with ID ${updatedOrder.id} not found for update.`);
+    console.warn(`Order with ID ${updatedOrderData.id} not found for update.`);
+    return undefined;
   }
 };
 
@@ -273,8 +341,9 @@ export let mockActiveOrders: Order[] = [
 
 export const mockPresetDiscounts: DiscountPreset[] = [
     { id: 'discount1', name: 'Employee Discount', percentage: 15, description: 'For all KREALIRES staff.' },
-    { id: 'discount2', name: 'Happy Hour Special', percentage: 10, description: 'Valid on select items during happy hour.' },
+    { id: 'discount2', name: 'Happy Hour Special', percentage: 10, description: 'Valid on select items during happy hour.', applicableCategoryIds: ["cat1", "cat4"] },
     { id: 'discount3', name: 'VIP Customer', percentage: 5, description: 'For registered VIP customers.' },
+    { id: 'discount4', name: 'Salmon Special', percentage: 20, description: 'Discount on Grilled Salmon only.', applicableItemIds: ["item5"] },
 ];
 
 
@@ -294,3 +363,4 @@ export const removeMockKitchenPrinter = (id: string): boolean => {
   mockKitchenPrinters = mockKitchenPrinters.filter(p => p.id !== id);
   return mockKitchenPrinters.length < initialLength;
 };
+

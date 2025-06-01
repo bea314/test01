@@ -1,6 +1,6 @@
 
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -12,9 +12,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, User, Tag, Hash, Clock, Calendar, CreditCard, Percent, DollarSign, Receipt, Info, Utensils, Loader2, AlertTriangle, Users, CheckCircle, Edit3, Save, ShoppingBag, CircleDollarSign, WalletCards, EyeOff, PlusCircle, ArrowRight } from "lucide-react";
+import { ArrowLeft, User, Tag, Hash, Clock, Calendar, CreditCard, Percent, DollarSign, Receipt, Info, Utensils, Loader2, AlertTriangle, Users, CheckCircle, Edit3, Save, ShoppingBag, CircleDollarSign, WalletCards, EyeOff, PlusCircle, ArrowRight, Trash2, XCircle } from "lucide-react";
 import type { Order, OrderItem, RestaurantTable } from '@/lib/types';
-import { mockActiveOrders, initialStaff, initialTables, updateActiveOrder } from '@/lib/mock-data';
+import { mockActiveOrders, initialStaff, initialTables, updateActiveOrder, calculateOrderTotals, initialMenuItems } from '@/lib/mock-data';
 import { IVA_RATE } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 
@@ -39,32 +39,30 @@ export default function OrderDetailsPage() {
 
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditingTableGuest, setIsEditingTableGuest] = useState(false);
 
-  // Editable fields
+  // Editable fields for table/guest
   const [editableTableId, setEditableTableId] = useState<string | undefined>(undefined);
   const [editableNumberOfGuests, setEditableNumberOfGuests] = useState<number | undefined>(undefined);
-  const [editableIsCourtesy, setEditableIsCourtesy] = useState(false);
-  const [editableIsOnHold, setEditableIsOnHold] = useState(false);
-  const [editableDisableReceiptPrint, setEditableDisableReceiptPrint] = useState(false);
 
-
-  useEffect(() => {
+  const loadOrderData = useCallback(() => {
     if (orderId) {
       const foundOrder = mockActiveOrders.find(o => o.id === orderId);
       if (foundOrder) {
         setOrder(JSON.parse(JSON.stringify(foundOrder))); // Deep copy for local editing
         setEditableTableId(foundOrder.tableId);
         setEditableNumberOfGuests(foundOrder.numberOfGuests);
-        setEditableIsCourtesy(foundOrder.isCourtesy || false);
-        setEditableIsOnHold(foundOrder.isOnHold || false);
-        setEditableDisableReceiptPrint(foundOrder.disableReceiptPrint || false);
       } else {
         setOrder(null);
       }
       setIsLoading(false);
     }
   }, [orderId]);
+
+  useEffect(() => {
+    loadOrderData();
+  }, [loadOrderData]);
+
 
   const getWaiterName = (waiterId?: string) => {
     if (!waiterId) return 'N/A';
@@ -78,24 +76,22 @@ export default function OrderDetailsPage() {
     return table ? table.name : tableId;
   };
 
-  const handleSaveChanges = () => {
+  const handleSaveTableGuestChanges = () => {
     if (!order) return;
 
     const originalTableId = mockActiveOrders.find(o => o.id === order.id)?.tableId;
 
-    const updatedOrderData: Order = {
-        ...order,
+    const updatedOrderPartial: Partial<Order> & { id: string } = {
+        id: order.id,
         tableId: editableTableId,
         numberOfGuests: editableNumberOfGuests,
-        isCourtesy: editableIsCourtesy,
-        isOnHold: editableIsOnHold,
-        status: editableIsOnHold ? 'on_hold' : order.status === 'on_hold' ? 'open' : order.status, // Revert from on_hold if unchecked
-        disableReceiptPrint: editableDisableReceiptPrint,
         updatedAt: new Date().toISOString(),
     };
     
-    updateActiveOrder(updatedOrderData); // Update in mock data source
-    setOrder(updatedOrderData); // Update local state
+    const updatedOrderResult = updateActiveOrder(updatedOrderPartial);
+    if (updatedOrderResult) {
+      setOrder(updatedOrderResult); // Update local state with the full updated order
+    }
 
     // Update table status if table changed
     if (originalTableId !== editableTableId) {
@@ -106,7 +102,7 @@ export default function OrderDetailsPage() {
                 initialTables[oldTableIndex].currentOrderId = undefined;
             }
         }
-        if (editableTableId && updatedOrderData.orderType === 'Dine-in' && (updatedOrderData.status === 'open' || updatedOrderData.status === 'on_hold' || updatedOrderData.status === 'pending_payment')) {
+        if (editableTableId && order.orderType === 'Dine-in' && (order.status === 'open' || order.status === 'on_hold' || order.status === 'pending_payment')) {
             const newTableIndex = initialTables.findIndex(t => t.id === editableTableId);
             if (newTableIndex > -1) {
                 initialTables[newTableIndex].status = 'occupied';
@@ -115,9 +111,8 @@ export default function OrderDetailsPage() {
         }
     }
 
-
-    toast({ title: "Changes Saved", description: `Order #${order.id.slice(-6)} has been updated.` });
-    setIsEditing(false);
+    toast({ title: "Changes Saved", description: `Table/Guest info for order #${order.id.slice(-6)} updated.` });
+    setIsEditingTableGuest(false);
   };
   
   const handleProceedToCheckout = () => {
@@ -126,6 +121,40 @@ export default function OrderDetailsPage() {
     }
   };
 
+  const handleCancelItem = (itemId: string) => {
+    if (!order) return;
+    const updatedItems = order.items.map(item => 
+      item.id === itemId ? { ...item, status: 'cancelled' as OrderItem['status'] } : item
+    );
+    const updatedOrderResult = updateActiveOrder({ id: order.id, items: updatedItems });
+    if (updatedOrderResult) {
+      setOrder(updatedOrderResult);
+      toast({ title: "Item Cancelled", description: "Item status updated and totals recalculated." });
+    }
+  };
+  
+  const handleOrderActionChange = (action: 'isCourtesy' | 'isOnHold' | 'disableReceiptPrint', value: boolean) => {
+    if (!order) return;
+    const updatedOrderPartial: Partial<Order> & { id: string } = { id: order.id, [action]: value };
+    
+    if (action === 'isCourtesy' && value) {
+        updatedOrderPartial.discountAmount = order.subtotal; // Full discount
+        updatedOrderPartial.tipAmount = 0;
+        // Totals will be recalculated by updateActiveOrder
+    } else if (action === 'isCourtesy' && !value) {
+        // Revert courtesy, totals will be recalculated
+    }
+
+    if (action === 'isOnHold') {
+        updatedOrderPartial.status = value ? 'on_hold' : 'open'; // Example status change
+    }
+    
+    const updatedOrderResult = updateActiveOrder(updatedOrderPartial);
+     if (updatedOrderResult) {
+      setOrder(updatedOrderResult);
+      toast({ title: "Order Updated", description: `Order action changed.` });
+    }
+  };
 
   if (isLoading) {
     return (
@@ -149,33 +178,29 @@ export default function OrderDetailsPage() {
     );
   }
   
-  const canEditOrder = order.status === 'open' || order.status === 'on_hold' || order.status === 'pending_payment';
-
+  const canModifyTableGuest = order.status === 'open' || order.status === 'on_hold' || order.status === 'pending_payment';
+  const canModifyItems = order.status === 'open' || order.status === 'on_hold';
 
   return (
     <div className="container mx-auto py-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-headline font-bold text-foreground">Order Details #{order.id.slice(-6)}</h1>
         <div className="flex gap-2">
-            {canEditOrder && !isEditing && (
-                 <Button variant="outline" onClick={() => setIsEditing(true)}>
-                    <Edit3 className="mr-2 h-4 w-4" /> Modify Order
+            {canModifyTableGuest && !isEditingTableGuest && (
+                 <Button variant="outline" onClick={() => setIsEditingTableGuest(true)}>
+                    <Edit3 className="mr-2 h-4 w-4" /> Modify Table/Guests
                 </Button>
             )}
-            {isEditing && (
-                 <Button variant="default" onClick={handleSaveChanges}>
-                    <Save className="mr-2 h-4 w-4" /> Save Changes
+            {isEditingTableGuest && (
+                 <Button variant="default" onClick={handleSaveTableGuestChanges}>
+                    <Save className="mr-2 h-4 w-4" /> Save Table/Guest Changes
                 </Button>
             )}
-            {isEditing && (
+            {isEditingTableGuest && (
                  <Button variant="ghost" onClick={() => {
-                    setIsEditing(false);
-                    // Reset editable fields to original order state
+                    setIsEditingTableGuest(false);
                     setEditableTableId(order.tableId);
                     setEditableNumberOfGuests(order.numberOfGuests);
-                    setEditableIsCourtesy(order.isCourtesy || false);
-                    setEditableIsOnHold(order.isOnHold || false);
-                    setEditableDisableReceiptPrint(order.disableReceiptPrint || false);
                  }}>
                     Cancel Edit
                 </Button>
@@ -214,13 +239,13 @@ export default function OrderDetailsPage() {
               <>
                 <div className="space-y-1">
                   <Label htmlFor="editableTableId" className="text-xs text-muted-foreground">Table</Label>
-                  {isEditing ? (
-                    <Select value={editableTableId} onValueChange={setEditableTableId} disabled={!isEditing}>
+                  {isEditingTableGuest ? (
+                    <Select value={editableTableId} onValueChange={setEditableTableId} disabled={!isEditingTableGuest}>
                         <SelectTrigger id="editableTableId" aria-label="Select Table">
                             <SelectValue placeholder="Select Table" />
                         </SelectTrigger>
                         <SelectContent>
-                            {initialTables.filter(t => t.status === 'available' || t.id === editableTableId).map(table => (
+                            {initialTables.filter(t => t.status === 'available' || t.id === order.tableId).map(table => ( // Allow selecting current table even if occupied by this order
                                 <SelectItem key={table.id} value={table.id}>{table.name}</SelectItem>
                             ))}
                         </SelectContent>
@@ -231,7 +256,7 @@ export default function OrderDetailsPage() {
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="editableNumberOfGuests" className="text-xs text-muted-foreground">Guests</Label>
-                  {isEditing ? (
+                  {isEditingTableGuest ? (
                     <Input 
                         id="editableNumberOfGuests" 
                         type="number" 
@@ -239,7 +264,7 @@ export default function OrderDetailsPage() {
                         onChange={e => setEditableNumberOfGuests(e.target.value ? parseInt(e.target.value) : undefined)} 
                         min="1"
                         className="h-9"
-                        disabled={!isEditing}
+                        disabled={!isEditingTableGuest}
                     />
                   ) : (
                     <p className="font-medium flex items-center"><Users className="mr-2 h-4 w-4 text-primary" />{order.numberOfGuests || 'N/A'}</p>
@@ -251,94 +276,75 @@ export default function OrderDetailsPage() {
 
           <Separator />
             <div>
-                <h4 className="font-semibold text-lg mb-3 flex items-center"><Utensils className="mr-2 h-5 w-5 text-primary"/>Items Ordered</h4>
-                {isEditing && (
-                    <Button variant="outline" size="sm" className="mb-3" disabled>
-                        <PlusCircle className="mr-2 h-4 w-4"/> Add More Items (Placeholder)
-                    </Button>
-                )}
-                <ScrollArea className="max-h-60 border rounded-md">
+                <div className="flex justify-between items-center mb-3">
+                    <h4 className="font-semibold text-lg flex items-center"><Utensils className="mr-2 h-5 w-5 text-primary"/>Items Ordered</h4>
+                    {canModifyItems && (
+                        <Button variant="outline" size="sm" asChild>
+                            <Link href={`/dashboard/orders?editActiveOrderId=${order.id}`}>
+                                <PlusCircle className="mr-2 h-4 w-4"/> Add More Items
+                            </Link>
+                        </Button>
+                    )}
+                </div>
+                <ScrollArea className="max-h-96 border rounded-md">
                 <ul className="divide-y">
                     {order.items.map(item => (
-                    <li key={item.id} className="p-3">
+                    <li key={item.id} className={`p-3 ${item.status === 'cancelled' ? 'opacity-50 bg-muted/50' : ''}`}>
                         <div className="flex justify-between items-start">
                         <div>
-                            <p className="font-medium">{item.quantity}x {item.name} {item.assignedGuest && <span className="text-xs text-muted-foreground">({item.assignedGuest})</span>}</p>
+                            <p className={`font-medium ${item.status === 'cancelled' ? 'line-through' : ''}`}>{item.quantity}x {item.name} {item.assignedGuest && <span className="text-xs text-muted-foreground">({item.assignedGuest})</span>}</p>
                             <p className="text-xs text-muted-foreground">Unit Price: ${item.price.toFixed(2)}</p>
                         </div>
-                        <p className="font-semibold text-primary">${(item.quantity * item.price).toFixed(2)}</p>
+                        <div className="flex items-center gap-2">
+                            <p className={`font-semibold text-primary ${item.status === 'cancelled' ? 'line-through' : ''}`}>${(item.quantity * item.price).toFixed(2)}</p>
+                            {item.status !== 'cancelled' && canModifyItems && (
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={() => handleCancelItem(item.id)} title="Cancel Item">
+                                    <XCircle className="h-4 w-4" />
+                                </Button>
+                            )}
+                        </div>
                         </div>
                         {item.observations && (
                         <p className="text-xs text-blue-500 mt-1 italic">Notes: "{item.observations}"</p>
                         )}
-                        <Badge variant="outline" className="mt-1 text-xs">{item.status}</Badge>
+                        <Badge variant={item.status === 'cancelled' ? 'destructive' : 'outline'} className="mt-1 text-xs capitalize">{item.status.replace('_', ' ')}</Badge>
                     </li>
                     ))}
                 </ul>
                 </ScrollArea>
+                 <div className="text-sm space-y-1 mt-4 border-t pt-4">
+                    <div className="flex justify-between"><span>Subtotal:</span> <span>${order.subtotal.toFixed(2)}</span></div>
+                    {order.discountAmount > 0 && <div className="flex justify-between text-destructive"><span>Discount:</span> <span>-${order.discountAmount.toFixed(2)}</span></div>}
+                    <div className="flex justify-between"><span>Tip (Added at Checkout):</span> <span>${order.tipAmount.toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span>Tax ({(IVA_RATE * 100).toFixed(0)}%):</span> <span>${order.taxAmount.toFixed(2)}</span></div>
+                    <Separator className="my-1"/>
+                    <div className="flex justify-between font-bold text-lg text-primary"><span>Grand Total:</span> <h1>${order.totalAmount.toFixed(2)}</h1></div>
+                </div>
             </div>
-
-
-          <Separator />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-            <div className="space-y-2">
-              <h4 className="font-semibold text-lg mb-2 flex items-center"><Receipt className="mr-2 h-5 w-5 text-primary"/>Financials</h4>
-              <div className="text-sm space-y-1">
-                <div className="flex justify-between"><span>Subtotal:</span> <span>${order.subtotal.toFixed(2)}</span></div>
-                {order.discountAmount > 0 && <div className="flex justify-between text-destructive"><span>Discount:</span> <span>-${order.discountAmount.toFixed(2)}</span></div>}
-                <div className="flex justify-between"><span>Tip:</span> <span>${order.tipAmount.toFixed(2)}</span></div>
-                <div className="flex justify-between"><span>Tax ({(IVA_RATE * 100).toFixed(0)}%):</span> <span>${order.taxAmount.toFixed(2)}</span></div>
-                <Separator className="my-1"/>
-                <div className="flex justify-between font-bold text-lg text-primary"><span>Grand Total:</span> <h1>${order.totalAmount.toFixed(2)}</h1></div>
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <h4 className="font-semibold text-lg mb-2 flex items-center"><CreditCard className="mr-2 h-5 w-5 text-primary"/>Payment & DTE</h4>
-              <div className="text-sm space-y-1">
-                <div className="flex justify-between"><span>Payment Method:</span> <span className="capitalize">{order.paymentMethod?.replace('_', ' ') || 'N/A'}</span></div>
-                <Separator className="my-2"/>
-                <p className="text-xs text-muted-foreground">DTE Type</p>
-                <p className="font-medium capitalize">{order.dteType?.replace('_', ' ') || 'Consumidor Final'}</p>
-                {order.dteType === 'credito_fiscal' && order.dteInvoiceInfo && (
-                  <>
-                    <p className="text-xs text-muted-foreground mt-1">DTE NIT</p><p className="font-medium">{order.dteInvoiceInfo.nit}</p>
-                    <p className="text-xs text-muted-foreground">DTE NRC</p><p className="font-medium">{order.dteInvoiceInfo.nrc}</p>
-                    <p className="text-xs text-muted-foreground">DTE Customer</p><p className="font-medium">{order.dteInvoiceInfo.customerName}</p>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-           {isEditing && (
-            <>
-                <Separator/>
-                <div className="space-y-3">
-                    <Label className="font-headline">Order Actions</Label>
-                    <div className="flex flex-wrap gap-4 items-center">
-                        <div className="flex items-center space-x-2">
-                            <Checkbox id="editableIsCourtesy" checked={editableIsCourtesy} onCheckedChange={(checked) => setEditableIsCourtesy(!!checked)} disabled={!isEditing} />
-                            <Label htmlFor="editableIsCourtesy" className="flex items-center"><CircleDollarSign className="mr-1 h-4 w-4 text-green-500"/>Mark as Courtesy</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                            <Checkbox id="editableIsOnHold" checked={editableIsOnHold} onCheckedChange={(checked) => setEditableIsOnHold(!!checked)} disabled={!isEditing} />
-                            <Label htmlFor="editableIsOnHold" className="flex items-center"><WalletCards className="mr-1 h-4 w-4 text-yellow-500"/>Hold Bill</Label>
-                        </div>
-                         <div className="flex items-center space-x-2">
-                            <Checkbox id="editableDisableReceiptPrint" checked={editableDisableReceiptPrint} onCheckedChange={(checked) => setEditableDisableReceiptPrint(!!checked)} disabled={!isEditing} />
-                            <Label htmlFor="editableDisableReceiptPrint" className="flex items-center"><EyeOff className="mr-1 h-4 w-4"/>No Receipt Print</Label>
-                        </div>
+          <Separator/>
+            <div className="space-y-3">
+                <h4 className="font-semibold text-lg mb-2 flex items-center"><Settings className="mr-2 h-5 w-5 text-primary"/>Order Actions</h4>
+                <div className="flex flex-wrap gap-x-6 gap-y-3 items-center">
+                    <div className="flex items-center space-x-2">
+                        <Checkbox id="isCourtesy" checked={order.isCourtesy} onCheckedChange={(checked) => handleOrderActionChange('isCourtesy', !!checked)} disabled={order.status === 'paid' || order.status === 'completed' || order.status === 'cancelled'} />
+                        <Label htmlFor="isCourtesy" className="flex items-center"><CircleDollarSign className="mr-1 h-4 w-4 text-green-500"/>Mark as Courtesy</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                        <Checkbox id="isOnHold" checked={order.isOnHold} onCheckedChange={(checked) => handleOrderActionChange('isOnHold', !!checked)} disabled={order.status === 'paid' || order.status === 'completed' || order.status === 'cancelled'} />
+                        <Label htmlFor="isOnHold" className="flex items-center"><WalletCards className="mr-1 h-4 w-4 text-yellow-500"/>Hold Bill</Label>
+                    </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox id="disableReceiptPrint" checked={order.disableReceiptPrint} onCheckedChange={(checked) => handleOrderActionChange('disableReceiptPrint', !!checked)} />
+                        <Label htmlFor="disableReceiptPrint" className="flex items-center"><EyeOff className="mr-1 h-4 w-4"/>No Receipt Print</Label>
                     </div>
                 </div>
-            </>
-           )}
+            </div>
 
         </CardContent>
         <CardFooter className="border-t pt-4 flex justify-end items-center gap-3">
-          <Button variant="outline" onClick={() => alert("Mock: Printing Receipt...")}>Print Receipt (Mock)</Button>
-           {(order.status === 'open' || order.status === 'on_hold' || order.status === 'pending_payment') && !isEditing && (
-            <Button onClick={handleProceedToCheckout}>
+          <Button variant="outline" onClick={() => alert("Mock: Printing Receipt...")} disabled={order.disableReceiptPrint}>Print Receipt (Mock)</Button>
+           {(order.status === 'open' || order.status === 'on_hold' || order.status === 'pending_payment') && (
+            <Button onClick={handleProceedToCheckout} disabled={order.status === 'on_hold' && !order.isCourtesy}>
                 Proceed to Checkout <ArrowRight className="ml-2 h-4 w-4"/>
             </Button>
           )}
@@ -347,3 +353,4 @@ export default function OrderDetailsPage() {
     </div>
   );
 }
+

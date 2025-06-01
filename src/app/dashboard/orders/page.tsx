@@ -10,14 +10,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard, Users, Percent, WalletCards, CircleDollarSign, EyeOff, StickyNote, Hash, UserCheck, Send } from "lucide-react";
+import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard, Users, Percent, WalletCards, CircleDollarSign, EyeOff, StickyNote, Hash, UserCheck, Send, Utensils, PackagePlus } from "lucide-react";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import type { OrderItem, MenuItem as MenuItemType, OrderType, Waiter, Order, AllergyTag, PaymentSplitType, DiscountPreset, RestaurantTable } from '@/lib/types';
+import type { OrderItem, MenuItem as MenuItemType, OrderType, Waiter, Order, AllergyTag, PaymentSplitType, DiscountPreset, RestaurantTable, MenuItemCategory } from '@/lib/types';
 import { IVA_RATE, DEFAULT_TIP_PERCENTAGE } from '@/lib/constants';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
-import { initialMenuItems as mockMenuItemsAll, mockCategories as mockMenuCategories, initialStaff, mockPresetDiscounts, initialTables, addActiveOrder, updateActiveOrder, mockActiveOrders } from '@/lib/mock-data';
+import { initialMenuItems as mockMenuItemsAll, mockCategories as mockMenuCategories, initialStaff, mockPresetDiscounts, initialTables, addActiveOrder, updateActiveOrder, mockActiveOrders, calculateOrderTotals } from '@/lib/mock-data';
 import {
   Dialog,
   DialogContent,
@@ -48,11 +48,18 @@ function OrdersPageContent() {
   const initialOrderTypeParam = searchParams.get('type') as OrderType | null;
   const initialTableIdParam = searchParams.get('tableId') as string | null;
   const checkoutOrderIdParam = searchParams.get('checkoutOrderId') as string | null;
+  const editActiveOrderIdParam = searchParams.get('editActiveOrderId') as string | null;
+
 
   const { toast } = useToast();
 
   const [currentStep, setCurrentStep] = useState<OrderStep>('building');
-  const [currentOrderItems, setCurrentOrderItems] = useState<OrderItem[]>([]);
+  // For new orders or adding to active order
+  const [newOrderItems, setNewOrderItems] = useState<Omit<OrderItem, 'id' | 'status' | 'menuItemId'> & { menuItemId: string; price: number; name: string; observations?: string; assignedGuest?: string; quantity: number }>[]([]);
+  // For displaying existing items when adding to active order, or items during checkout
+  const [existingOrderItems, setExistingOrderItems] = useState<OrderItem[]>([]);
+
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | 'all'>('all');
   const [menuView, setMenuView] = useState<MenuView>('grid');
@@ -62,57 +69,72 @@ function OrdersPageContent() {
   const [numberOfGuests, setNumberOfGuests] = useState<number | undefined>(1);
   const [selectedWaiter, setSelectedWaiter] = useState<string | undefined>(initialStaff[0]?.id);
   
+  // Checkout specific state
+  const [loadedOrderForCheckout, setLoadedOrderForCheckout] = useState<Order | null>(null);
   const [tipMode, setTipMode] = useState<TipMode>('default');
   const [customTipPercentage, setCustomTipPercentage] = useState<number>(DEFAULT_TIP_PERCENTAGE);
   const [manualTipAmount, setManualTipAmount] = useState<number>(0);
-
   const [selectedDiscountId, setSelectedDiscountId] = useState<string | undefined>(undefined);
-
   const [paymentMethod, setPaymentMethod] = useState<string | undefined>(undefined);
-  
   const [dteType, setDteType] = useState<'consumidor_final' | 'credito_fiscal'>('consumidor_final');
   const [dteNit, setDteNit] = useState('');
   const [dteNrc, setDteNrc] = useState('');
   const [dteCustomerName, setDteCustomerName] = useState('');
-
-  const [editingObservationItem, setEditingObservationItem] = useState<OrderItem | null>(null);
-  const [currentObservationText, setCurrentObservationText] = useState('');
-
-  const [isCourtesy, setIsCourtesy] = useState(false);
-  const [orderIsOnHold, setOrderIsOnHold] = useState(false); // Renamed to avoid conflict with Order.isOnHold
-  const [disableReceiptPrint, setDisableReceiptPrint] = useState(false);
-
   const [paymentSplitType, setPaymentSplitType] = useState<PaymentSplitType>('none');
   const [paymentSplitWays, setPaymentSplitWays] = useState<number>(2);
   const [itemsToSplit, setItemsToSplit] = useState<Record<string, boolean>>({});
+  // Order Actions on checkout page, derived from loadedOrderForCheckout
+  const [isCourtesyCheckout, setIsCourtesyCheckout] = useState(false);
+  const [isOnHoldCheckout, setIsOnHoldCheckout] = useState(false);
+  const [disableReceiptPrintCheckout, setDisableReceiptPrintCheckout] = useState(false);
 
-  const [currentEditingOrderId, setCurrentEditingOrderId] = useState<string | null>(checkoutOrderIdParam);
+
+  const [editingObservationItem, setEditingObservationItem] = useState< (Omit<OrderItem, 'id' | 'status' | 'menuItemId'> & { tempId?: string; menuItemId: string; price: number; name: string; observations?: string; assignedGuest?: string; quantity: number }) | null>(null);
+  const [currentObservationText, setCurrentObservationText] = useState('');
+
+  const pageMode = useMemo(() => {
+    if (checkoutOrderIdParam) return 'checkout_existing';
+    if (editActiveOrderIdParam) return 'add_to_active';
+    return 'new_order';
+  }, [checkoutOrderIdParam, editActiveOrderIdParam]);
 
 
   useEffect(() => {
     const typeParam = searchParams.get('type') as OrderType | null;
     const tableIdParam = searchParams.get('tableId') as string | null;
-    const checkoutOrderId = searchParams.get('checkoutOrderId') as string | null;
 
-    if (checkoutOrderId) {
-        const orderToCheckout = mockActiveOrders.find(o => o.id === checkoutOrderId);
+    if (pageMode === 'checkout_existing' && checkoutOrderIdParam) {
+        const orderToCheckout = mockActiveOrders.find(o => o.id === checkoutOrderIdParam);
         if (orderToCheckout) {
-            setCurrentEditingOrderId(checkoutOrderId);
-            setCurrentOrderItems(orderToCheckout.items.map(item => ({...item}))); // Deep copy
+            setLoadedOrderForCheckout(orderToCheckout);
+            setExistingOrderItems([...orderToCheckout.items]); // For display in checkout
             setOrderType(orderToCheckout.orderType);
             setSelectedWaiter(orderToCheckout.waiterId);
             setSelectedTableId(orderToCheckout.tableId);
             setNumberOfGuests(orderToCheckout.numberOfGuests);
             setSelectedDiscountId(orderToCheckout.selectedDiscountId);
-            // Potentially load tip settings if saved with order
-            setIsCourtesy(orderToCheckout.isCourtesy || false);
-            setOrderIsOnHold(orderToCheckout.isOnHold || false);
-            setDisableReceiptPrint(orderToCheckout.disableReceiptPrint || false);
+            // Load order flags into checkout-specific state
+            setIsCourtesyCheckout(orderToCheckout.isCourtesy || false);
+            setIsOnHoldCheckout(orderToCheckout.isOnHold || false);
+            setDisableReceiptPrintCheckout(orderToCheckout.disableReceiptPrint || false);
+            setTipAmount(orderToCheckout.tipAmount || 0); // Use existing tip amount or calculate default
             setCurrentStep('checkout');
         } else {
-            toast({ title: "Error", description: `Order ${checkoutOrderId} not found for checkout.`, variant: "destructive" });
+            toast({ title: "Error", description: `Order ${checkoutOrderIdParam} not found for checkout.`, variant: "destructive" });
         }
-    } else {
+    } else if (pageMode === 'add_to_active' && editActiveOrderIdParam) {
+        const orderToEdit = mockActiveOrders.find(o => o.id === editActiveOrderIdParam);
+        if (orderToEdit) {
+            setExistingOrderItems([...orderToEdit.items]); // Display existing items for reference
+            setOrderType(orderToEdit.orderType); // Pre-fill and disable these
+            setSelectedTableId(orderToEdit.tableId);
+            setNumberOfGuests(orderToEdit.numberOfGuests);
+            setSelectedWaiter(orderToEdit.waiterId);
+            setCurrentStep('building');
+        } else {
+            toast({ title: "Error", description: `Order ${editActiveOrderIdParam} not found for editing.`, variant: "destructive" });
+        }
+    } else { // New order mode
         if (typeParam) {
           setOrderType(typeParam);
           if (typeParam !== 'Dine-in') {
@@ -122,23 +144,28 @@ function OrdersPageContent() {
             setNumberOfGuests(numberOfGuests === undefined ? 1 : numberOfGuests);
             if (tableIdParam) setSelectedTableId(tableIdParam);
           }
-        } else {
+        } else { // Default to Dine-in if no params
             setOrderType('Dine-in');
             setNumberOfGuests(numberOfGuests === undefined ? 1 : numberOfGuests);
             if (tableIdParam) setSelectedTableId(tableIdParam);
         }
+        setCurrentStep('building');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, toast]); 
+  }, [searchParams, toast, pageMode, checkoutOrderIdParam, editActiveOrderIdParam]); 
 
   const resetOrderForm = () => {
-    setCurrentOrderItems([]);
+    setNewOrderItems([]);
+    setExistingOrderItems([]);
     setSearchTerm('');
     setSelectedCategory('all');
     setOrderType('Dine-in');
     setSelectedTableId(undefined);
     setNumberOfGuests(1);
     setSelectedWaiter(initialStaff[0]?.id);
+    
+    // Checkout states
+    setLoadedOrderForCheckout(null);
     setTipMode('default');
     setCustomTipPercentage(DEFAULT_TIP_PERCENTAGE);
     setManualTipAmount(0);
@@ -148,69 +175,67 @@ function OrdersPageContent() {
     setDteNit('');
     setDteNrc('');
     setDteCustomerName('');
-    setIsCourtesy(false);
-    setOrderIsOnHold(false);
-    setDisableReceiptPrint(false);
     setPaymentSplitType('none');
     setPaymentSplitWays(2);
     setItemsToSplit({});
+    setIsCourtesyCheckout(false);
+    setIsOnHoldCheckout(false);
+    setDisableReceiptPrintCheckout(false);
+
     setCurrentStep('building');
-    setCurrentEditingOrderId(null);
     router.replace('/dashboard/orders'); // Clear query params
   };
 
-  const updateItemGuestAssignment = (itemId: string, guest: string) => {
-    setCurrentOrderItems(prevItems => 
+  const updateItemGuestAssignment = (tempId: string, guest: string) => {
+    setNewOrderItems(prevItems => 
       prevItems.map(item => 
-        item.id === itemId ? { ...item, assignedGuest: guest } : item
+        (item as any).tempId === tempId ? { ...item, assignedGuest: guest } : item
       )
     );
   };
 
   const addItemToOrder = (menuItem: MenuItemType) => {
-    setCurrentOrderItems(prevItems => {
+    setNewOrderItems(prevItems => {
       const existingItemIndex = prevItems.findIndex(item => 
         item.menuItemId === menuItem.id && 
         !item.observations && 
         (!numberOfGuests || numberOfGuests <= 1 || !item.assignedGuest) // Only merge if not guest-assigned or single guest
       );
 
-      if (existingItemIndex > -1 && (!numberOfGuests || numberOfGuests <=1)) {
+      if (existingItemIndex > -1 && (!numberOfGuests || numberOfGuests <=1 || pageMode === 'add_to_active')) {
         return prevItems.map((item, index) =>
           index === existingItemIndex ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
       return [...prevItems, { 
-        id: `temp-${Date.now().toString()}`, 
+        tempId: `temp-${Date.now().toString()}-${Math.random().toString(36).substring(7)}`, // Unique temp ID for list key
         menuItemId: menuItem.id, 
         name: menuItem.name, 
         quantity: 1, 
         price: menuItem.price, 
-        modifiers: [], 
-        status: 'pending', 
         observations: '',
-        assignedGuest: numberOfGuests && numberOfGuests > 1 ? 'Guest 1' : undefined // Default for multi-guest
+        assignedGuest: numberOfGuests && numberOfGuests > 1 ? 'Guest 1' : undefined, // Default for multi-guest
       }];
     });
   };
 
-  const removeItemFromOrder = (itemId: string) => {
-    setCurrentOrderItems(prevItems => prevItems.filter(item => item.id !== itemId));
+  const removeItemFromNewOrder = (tempId: string) => {
+    setNewOrderItems(prevItems => prevItems.filter(item => (item as any).tempId !== tempId));
   };
 
-  const updateItemQuantity = (itemId: string, quantity: number) => {
+  const updateNewItemQuantity = (tempId: string, quantity: number) => {
     if (quantity <= 0) {
-      removeItemFromOrder(itemId);
+      removeItemFromNewOrder(tempId);
     } else {
-      setCurrentOrderItems(prevItems => prevItems.map(item => item.id === itemId ? { ...item, quantity } : item));
+      setNewOrderItems(prevItems => prevItems.map(item => (item as any).tempId === tempId ? { ...item, quantity } : item));
     }
   };
 
   const handleSaveObservation = () => {
-    if (editingObservationItem) {
-      setCurrentOrderItems(prevItems =>
+    if (editingObservationItem && (editingObservationItem as any).tempId) {
+      setNewOrderItems(prevItems =>
         prevItems.map(item =>
-          item.id === editingObservationItem.id ? { ...item, observations: currentObservationText } : item
+          (item as any).tempId === (editingObservationItem as any).tempId ? { ...item, observations: currentObservationText } : item
         )
       );
       setEditingObservationItem(null);
@@ -218,37 +243,84 @@ function OrdersPageContent() {
     }
   };
   
-  const subtotal = useMemo(() => currentOrderItems.reduce((sum, item) => sum + item.price * item.quantity, 0), [currentOrderItems]);
+  const currentOrderItemsForDisplay = pageMode === 'checkout_existing' ? existingOrderItems : newOrderItems;
+  
+  const subtotal = useMemo(() => {
+    if (pageMode === 'checkout_existing' && loadedOrderForCheckout) {
+      return loadedOrderForCheckout.items.filter(i => i.status !== 'cancelled').reduce((sum, item) => sum + item.price * item.quantity, 0);
+    }
+    return newOrderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  }, [newOrderItems, loadedOrderForCheckout, pageMode]);
   
   const discountPercentage = useMemo(() => {
-    if (isCourtesy) return 100;
+    if (isCourtesyCheckout && pageMode === 'checkout_existing') return 100;
     const preset = mockPresetDiscounts.find(d => d.id === selectedDiscountId);
     return preset ? preset.percentage : 0;
-  }, [selectedDiscountId, isCourtesy]);
+  }, [selectedDiscountId, isCourtesyCheckout, pageMode]);
   
-  const discountAmount = useMemo(() => subtotal * (discountPercentage / 100), [subtotal, discountPercentage]);
-  
+  const discountAmount = useMemo(() => {
+    if (isCourtesyCheckout && pageMode === 'checkout_existing') return subtotal;
+
+    let discountableSubtotal = subtotal;
+    const preset = mockPresetDiscounts.find(d => d.id === selectedDiscountId);
+
+    if (preset) {
+        const itemsToConsider = pageMode === 'checkout_existing' && loadedOrderForCheckout 
+            ? loadedOrderForCheckout.items.filter(i => i.status !== 'cancelled') 
+            : newOrderItems;
+
+        if (preset.applicableItemIds && preset.applicableItemIds.length > 0) {
+            discountableSubtotal = itemsToConsider
+                .filter(item => preset.applicableItemIds!.includes(item.menuItemId))
+                .reduce((sum, item) => sum + item.price * item.quantity, 0);
+        } else if (preset.applicableCategoryIds && preset.applicableCategoryIds.length > 0) {
+            discountableSubtotal = itemsToConsider
+                .filter(item => {
+                    const menuItem = mockMenuItemsAll.find(mi => mi.id === item.menuItemId);
+                    return menuItem && preset.applicableCategoryIds!.includes(menuItem.category.id);
+                })
+                .reduce((sum, item) => sum + item.price * item.quantity, 0);
+        }
+    } else {
+      return 0; // No discount selected
+    }
+    return discountableSubtotal * (discountPercentage / 100);
+  }, [subtotal, discountPercentage, selectedDiscountId, isCourtesyCheckout, pageMode, loadedOrderForCheckout, newOrderItems]);
+
   const subtotalAfterDiscount = useMemo(() => subtotal - discountAmount, [subtotal, discountAmount]);
 
-  const tipAmount = useMemo(() => {
-    if (isCourtesy) return 0;
-    switch (tipMode) {
-      case 'percentage':
-        return subtotalAfterDiscount * (customTipPercentage / 100);
-      case 'manual':
-        return manualTipAmount;
-      case 'default':
-      default:
-        return subtotalAfterDiscount * (DEFAULT_TIP_PERCENTAGE / 100);
-    }
-  }, [tipMode, subtotalAfterDiscount, customTipPercentage, manualTipAmount, isCourtesy]);
+  const [tipAmount, setTipAmount] = useState(0);
 
-  const taxAmount = useMemo(() => isCourtesy ? 0 : subtotalAfterDiscount * IVA_RATE, [subtotalAfterDiscount, isCourtesy]);
+  useEffect(() => {
+    if (pageMode === 'checkout_existing') {
+      if (isCourtesyCheckout) {
+        setTipAmount(0);
+        return;
+      }
+      let calculatedTip = 0;
+      switch (tipMode) {
+        case 'percentage':
+          calculatedTip = subtotalAfterDiscount * (customTipPercentage / 100);
+          break;
+        case 'manual':
+          calculatedTip = manualTipAmount;
+          break;
+        case 'default':
+        default:
+          calculatedTip = subtotalAfterDiscount * (DEFAULT_TIP_PERCENTAGE / 100);
+          break;
+      }
+      setTipAmount(calculatedTip);
+    }
+  }, [tipMode, subtotalAfterDiscount, customTipPercentage, manualTipAmount, isCourtesyCheckout, pageMode]);
+
+
+  const taxAmount = useMemo(() => (isCourtesyCheckout && pageMode === 'checkout_existing') ? 0 : subtotalAfterDiscount * IVA_RATE, [subtotalAfterDiscount, isCourtesyCheckout, pageMode]);
   
   const totalAmount = useMemo(() => {
-    if (isCourtesy) return 0;
+    if (isCourtesyCheckout && pageMode === 'checkout_existing') return 0;
     return subtotalAfterDiscount + taxAmount + tipAmount;
-  }, [subtotalAfterDiscount, taxAmount, tipAmount, isCourtesy]);
+  }, [subtotalAfterDiscount, taxAmount, tipAmount, isCourtesyCheckout, pageMode]);
 
 
   const filteredMenuItems = mockMenuItemsAll.filter(item =>
@@ -257,8 +329,8 @@ function OrdersPageContent() {
     item.availability === 'available'
   ).filter(item => selectedCategory !== 'all' ? item.category.id === selectedCategory : true);
 
-  const handleFinalizeAndSendToKitchen = () => {
-    if (currentOrderItems.length === 0) {
+  const handleSendNewOrderToKitchen = () => {
+    if (newOrderItems.length === 0) {
         toast({ title: "Empty Order", description: "Please add items to the order.", variant: "destructive" });
         return;
     }
@@ -271,50 +343,81 @@ function OrdersPageContent() {
       return;
     }
 
-    const newOrderId = `order${Date.now()}`;
-    const newOrder: Order = {
-        id: newOrderId,
-        items: currentOrderItems.map(item => ({...item, id: `oi-${newOrderId}-${item.menuItemId}-${Math.random().toString(36).substring(7)}`})), // Ensure unique IDs for items in the new order
+    const orderPayload = {
+        items: newOrderItems.map(item => ({ ...item, status: 'pending' as OrderItem['status']})),
         orderType,
         waiterId: selectedWaiter,
         tableId: orderType === 'Dine-in' ? selectedTableId : undefined,
         numberOfGuests: orderType === 'Dine-in' ? numberOfGuests : undefined,
-        status: orderIsOnHold ? 'on_hold' : 'open',
-        subtotal,
-        discountAmount,
-        taxAmount,
-        tipAmount,
-        totalAmount,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        isCourtesy,
-        isOnHold: orderIsOnHold,
-        disableReceiptPrint,
-        selectedDiscountId,
-        dteType: dteType, // will be finalized in checkout
-        paymentMethod: paymentMethod, // will be finalized in checkout
+        // Financials will be calculated by addActiveOrder
+        // Initial flags (can be overridden later on active order details)
+        isCourtesy: false, 
+        isOnHold: false,
+        disableReceiptPrint: false,
+        tipAmount: 0, // Tip is handled at checkout
     };
 
-    addActiveOrder(newOrder);
-    toast({ title: "Order Sent to Kitchen (Mock)", description: `Order #${newOrderId.slice(-6)} created and sent.` });
+    const newCreatedOrder = addActiveOrder(orderPayload);
+    if (!newCreatedOrder) {
+        toast({title: "Error", description: "Failed to create order.", variant: "destructive"});
+        return;
+    }
+
+    toast({ title: "Order Sent to Kitchen", description: `Order #${newCreatedOrder.id.slice(-6)} created.` });
 
     if (orderType === 'Dine-in' && selectedTableId) {
         const tableIndex = initialTables.findIndex(t => t.id === selectedTableId);
         if (tableIndex > -1) {
             initialTables[tableIndex].status = 'occupied';
-            initialTables[tableIndex].currentOrderId = newOrderId;
+            initialTables[tableIndex].currentOrderId = newCreatedOrder.id;
         }
     }
     resetOrderForm();
-    router.push(`/dashboard/active-orders/${newOrderId}`);
+    router.push(`/dashboard/active-orders/${newCreatedOrder.id}`);
   };
 
+  const handleAddItemsToActiveOrder = () => {
+    if (!editActiveOrderIdParam) return;
+    if (newOrderItems.length === 0) {
+        toast({ title: "No New Items", description: "Please add items to append to the order.", variant: "destructive"});
+        return;
+    }
+    const activeOrder = mockActiveOrders.find(o => o.id === editActiveOrderIdParam);
+    if (!activeOrder) {
+        toast({title: "Error", description: `Active order ${editActiveOrderIdParam} not found.`, variant: "destructive"});
+        return;
+    }
+    const itemsToAdd: OrderItem[] = newOrderItems.map((item, index) => ({
+        id: `oi-${activeOrder.id}-new-${Date.now()}-${index}`, // Ensure unique ID
+        menuItemId: item.menuItemId,
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price,
+        observations: item.observations,
+        assignedGuest: item.assignedGuest,
+        status: 'pending',
+        modifiers: [] // Assuming no modifiers for newly added items for simplicity
+    }));
+
+    const updatedOrderItems = [...activeOrder.items, ...itemsToAdd];
+    const updatedOrderResult = updateActiveOrder({ id: activeOrder.id, items: updatedOrderItems});
+
+    if(updatedOrderResult){
+        toast({title: "Items Added", description: `${newOrderItems.length} item(s) added to order #${activeOrder.id.slice(-6)}`});
+        resetOrderForm();
+        router.push(`/dashboard/active-orders/${activeOrder.id}`);
+    } else {
+        toast({title: "Error", description: "Failed to add items to order.", variant: "destructive"});
+    }
+  };
+
+
   const handleFinalizePayment = () => {
-    if (!currentEditingOrderId) {
+    if (!loadedOrderForCheckout) {
         toast({ title: "Error", description: "No active order selected for payment.", variant: "destructive" });
         return;
     }
-    if (!paymentMethod && !isCourtesy) {
+    if (!paymentMethod && !isCourtesyCheckout) {
         toast({ title: "Payment Method Required", description: "Please select a payment method.", variant: "destructive" });
         return;
     }
@@ -323,54 +426,73 @@ function OrdersPageContent() {
         return;
     }
     
-    const orderToUpdate = mockActiveOrders.find(o => o.id === currentEditingOrderId);
-    if (!orderToUpdate) {
-         toast({ title: "Error", description: `Order ${currentEditingOrderId} not found for payment.`, variant: "destructive" });
-        return;
-    }
+    const orderToUpdate = loadedOrderForCheckout;
 
-    const updatedOrder: Order = {
-        ...orderToUpdate,
-        items: currentOrderItems, // Use current items as they might have changes (though ideally not in checkout step)
-        status: isCourtesy ? 'completed' : orderIsOnHold ? 'on_hold' : 'paid',
-        paymentMethod,
+    const updatedOrderPartial: Partial<Order> & { id: string } = {
+        id: orderToUpdate.id,
+        status: isCourtesyCheckout ? 'completed' : isOnHoldCheckout ? 'on_hold' : 'paid',
+        paymentMethod: isCourtesyCheckout ? undefined : paymentMethod,
         dteType,
         dteInvoiceInfo: dteType === 'credito_fiscal' ? { nit: dteNit, nrc: dteNrc, customerName: dteCustomerName } : undefined,
-        tipAmount, // Recalculated
-        discountAmount, // Recalculated
+        tipAmount, 
         selectedDiscountId,
-        totalAmount, // Recalculated
-        subtotal, // Recalculated
-        taxAmount, // Recalculated
-        isCourtesy,
-        isOnHold: orderIsOnHold, // Ensure this is the order-level hold status
-        disableReceiptPrint,
+        isCourtesy: isCourtesyCheckout,
+        isOnHold: isOnHoldCheckout, 
+        disableReceiptPrint: disableReceiptPrintCheckout,
         updatedAt: new Date().toISOString(),
     };
     
-    updateActiveOrder(updatedOrder);
+    const finalUpdatedOrder = updateActiveOrder(updatedOrderPartial);
+    if (!finalUpdatedOrder) {
+        toast({title: "Error", description: "Failed to finalize payment.", variant: "destructive"});
+        return;
+    }
 
-    let message = `Order #${currentEditingOrderId.slice(-6)} finalized.`;
+    let message = `Order #${finalUpdatedOrder.id.slice(-6)} finalized.`;
     if (paymentSplitType !== 'none') {
         message += ` Payment split: ${paymentSplitType}`;
         if (paymentSplitType === 'equal') message += ` into ${paymentSplitWays} ways.`;
     }
-    if (isCourtesy) message = `Order #${currentEditingOrderId.slice(-6)} Marked as Courtesy.`;
-    else if (orderIsOnHold) message = `Order #${currentEditingOrderId.slice(-6)} status set to On Hold.`;
+    if (isCourtesyCheckout) message = `Order #${finalUpdatedOrder.id.slice(-6)} Marked as Courtesy.`;
+    else if (isOnHoldCheckout) message = `Order #${finalUpdatedOrder.id.slice(-6)} status set to On Hold.`;
 
 
     toast({ title: "Payment Processed", description: message });
     
-    if (orderType === 'Dine-in' && selectedTableId && (updatedOrder.status === 'paid' || updatedOrder.status === 'completed' || updatedOrder.status === 'cancelled')) {
-        const tableIndex = initialTables.findIndex(t => t.id === selectedTableId);
-        if (tableIndex > -1 && initialTables[tableIndex].currentOrderId === currentEditingOrderId) {
-            initialTables[tableIndex].status = 'available'; // Or 'needs_cleaning'
+    if (orderToUpdate.orderType === 'Dine-in' && orderToUpdate.tableId && (finalUpdatedOrder.status === 'paid' || finalUpdatedOrder.status === 'completed' || finalUpdatedOrder.status === 'cancelled')) {
+        const tableIndex = initialTables.findIndex(t => t.id === orderToUpdate.tableId);
+        if (tableIndex > -1 && initialTables[tableIndex].currentOrderId === finalUpdatedOrder.id) {
+            initialTables[tableIndex].status = 'available'; 
             initialTables[tableIndex].currentOrderId = undefined;
         }
     }
 
-    resetOrderForm(); // Resets the form and clears currentEditingOrderId
+    resetOrderForm(); 
     router.push('/dashboard/active-orders');
+  };
+
+  const pageTitle = useMemo(() => {
+    if (pageMode === 'checkout_existing') return `Checkout: Order #${checkoutOrderIdParam?.slice(-6) || 'N/A'}`;
+    if (pageMode === 'add_to_active') return `Add Items to Order #${editActiveOrderIdParam?.slice(-6) || 'N/A'}`;
+    return 'Build New Order';
+  }, [pageMode, checkoutOrderIdParam, editActiveOrderIdParam]);
+
+  const mainButtonText = useMemo(() => {
+    if (pageMode === 'add_to_active') return 'Add Selected Items to Order';
+    return 'Finalize & Send to Kitchen';
+  }, [pageMode]);
+
+  const mainButtonIcon = useMemo(() => {
+    if (pageMode === 'add_to_active') return <PackagePlus className="mr-2 h-5 w-5" />;
+    return <Send className="mr-2 h-5 w-5" />;
+  }, [pageMode]);
+
+  const handleMainButtonClick = () => {
+    if (pageMode === 'add_to_active') {
+        handleAddItemsToActiveOrder();
+    } else {
+        handleSendNewOrderToKitchen();
+    }
   };
 
 
@@ -378,90 +500,115 @@ function OrdersPageContent() {
     <div className="container mx-auto py-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-headline font-bold text-foreground">
-          {currentStep === 'building' ? 'Build New Order' : `Checkout: Order #${currentEditingOrderId?.slice(-6) || 'New'}`}
+          {pageTitle}
         </h1>
         {currentStep === 'checkout' && (
             <Button variant="outline" onClick={() => { 
-              if(currentEditingOrderId) router.push(`/dashboard/active-orders/${currentEditingOrderId}`); else resetOrderForm();
+              if(checkoutOrderIdParam) router.push(`/dashboard/active-orders/${checkoutOrderIdParam}`); else resetOrderForm();
             }}>
                 <ArrowLeft className="mr-2 h-4 w-4" /> 
-                {currentEditingOrderId ? "Back to Active Order" : "Cancel Checkout & Start New"}
+                {checkoutOrderIdParam ? "Back to Active Order" : "Cancel Checkout & Start New"}
             </Button>
         )}
+         {pageMode === 'add_to_active' && (
+             <Button variant="outline" onClick={() => router.push(`/dashboard/active-orders/${editActiveOrderIdParam}`)}>
+                <ArrowLeft className="mr-2 h-4 w-4" /> 
+                Back to Order Details
+            </Button>
+         )}
       </div>
       
       {currentStep === 'building' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <Card className="shadow-xl lg:order-1">
             <CardHeader>
-              <CardTitle className="font-headline flex items-center"><ShoppingCart className="mr-2 h-5 w-5"/>Current Order</CardTitle>
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                  <Select value={orderType} onValueChange={(value) => {
-                      const newOrderType = value as OrderType;
-                      setOrderType(newOrderType);
-                      if (newOrderType !== 'Dine-in') {
-                        setNumberOfGuests(undefined);
-                        setSelectedTableId(undefined);
-                      } else if (numberOfGuests === undefined) {
-                        setNumberOfGuests(1);
-                      }
-                  }}>
-                      <SelectTrigger aria-label="Order Type">
-                          <SelectValue placeholder="Order Type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                          <SelectItem value="Dine-in">Dine-in</SelectItem>
-                          <SelectItem value="Takeout">Takeout</SelectItem>
-                          <SelectItem value="Delivery">Delivery</SelectItem>
-                      </SelectContent>
-                  </Select>
-                  <Select value={selectedWaiter} onValueChange={setSelectedWaiter}>
-                      <SelectTrigger aria-label="Assign Waiter">
-                          <SelectValue placeholder="Assign Waiter" />
-                      </SelectTrigger>
-                      <SelectContent>
-                          {initialStaff.map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
-                      </SelectContent>
-                  </Select>
-              </div>
-              {orderType === 'Dine-in' && (
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  <div>
-                    <Label htmlFor="selectedTable">Table</Label>
-                     <Select value={selectedTableId} onValueChange={setSelectedTableId}>
-                        <SelectTrigger id="selectedTable" aria-label="Select Table">
-                            <SelectValue placeholder="Select Table" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {initialTables.filter(t => t.status === 'available' || t.status === 'reserved' || t.id === selectedTableId).map(table => (
-                                <SelectItem key={table.id} value={table.id}>{table.name}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+              <CardTitle className="font-headline flex items-center"><ShoppingCart className="mr-2 h-5 w-5"/>{pageMode === 'add_to_active' ? 'New Items for Order' : 'Current Order'}</CardTitle>
+              {pageMode !== 'add_to_active' && (
+                <>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                      <Select value={orderType} onValueChange={(value) => {
+                          const newOrderType = value as OrderType;
+                          setOrderType(newOrderType);
+                          if (newOrderType !== 'Dine-in') {
+                            setNumberOfGuests(undefined);
+                            setSelectedTableId(undefined);
+                          } else if (numberOfGuests === undefined) {
+                            setNumberOfGuests(1);
+                          }
+                      }}>
+                          <SelectTrigger aria-label="Order Type">
+                              <SelectValue placeholder="Order Type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                              <SelectItem value="Dine-in">Dine-in</SelectItem>
+                              <SelectItem value="Takeout">Takeout</SelectItem>
+                              <SelectItem value="Delivery">Delivery</SelectItem>
+                          </SelectContent>
+                      </Select>
+                      <Select value={selectedWaiter} onValueChange={setSelectedWaiter}>
+                          <SelectTrigger aria-label="Assign Waiter">
+                              <SelectValue placeholder="Assign Waiter" />
+                          </SelectTrigger>
+                          <SelectContent>
+                              {initialStaff.map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+                          </SelectContent>
+                      </Select>
                   </div>
-                  <div>
-                    <Label htmlFor="numberOfGuests">Guests</Label>
-                    <Input 
-                        id="numberOfGuests" 
-                        type="number" 
-                        value={numberOfGuests || ''} 
-                        onChange={e => setNumberOfGuests(e.target.value ? parseInt(e.target.value) : undefined)} 
-                        placeholder="e.g., 1"
-                        min="1"
-                        className="h-9"
-                    />
-                  </div>
-                </div>
+                  {orderType === 'Dine-in' && (
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <div>
+                        <Label htmlFor="selectedTable">Table</Label>
+                        <Select value={selectedTableId} onValueChange={setSelectedTableId}>
+                            <SelectTrigger id="selectedTable" aria-label="Select Table">
+                                <SelectValue placeholder="Select Table" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {initialTables.filter(t => t.status === 'available' || t.status === 'reserved' || t.id === selectedTableId).map(table => (
+                                    <SelectItem key={table.id} value={table.id}>{table.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="numberOfGuests">Guests</Label>
+                        <Input 
+                            id="numberOfGuests" 
+                            type="number" 
+                            value={numberOfGuests || ''} 
+                            onChange={e => setNumberOfGuests(e.target.value ? parseInt(e.target.value) : undefined)} 
+                            placeholder="e.g., 1"
+                            min="1"
+                            className="h-9"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </CardHeader>
             <ScrollArea className="h-[calc(100vh-36rem)] lg:h-[calc(100vh-32rem)]"> 
               <CardContent className="flex flex-col justify-between ">
-                  <ScrollArea className="flex-grow h-[280px] pr-2 mb-4">
-                  {currentOrderItems.length === 0 ? (
-                      <p className="text-muted-foreground text-center py-10">No items in order.</p>
+                  {pageMode === 'add_to_active' && existingOrderItems.length > 0 && (
+                    <div className="mb-4 p-3 border rounded-md bg-muted/50">
+                        <h5 className="text-sm font-semibold mb-2 text-muted-foreground">Existing Items in Order #{editActiveOrderIdParam?.slice(-6)}:</h5>
+                        <ScrollArea className="max-h-32">
+                            <ul className="text-xs space-y-1">
+                            {existingOrderItems.map(item => (
+                                <li key={item.id} className={item.status === 'cancelled' ? 'line-through opacity-60' : ''}>
+                                    {item.quantity}x {item.name} {item.assignedGuest ? `(${item.assignedGuest})` : ''}
+                                    {item.status === 'cancelled' ? ' (Cancelled)' : ''}
+                                </li>
+                            ))}
+                            </ul>
+                        </ScrollArea>
+                    </div>
+                  )}
+                  <ScrollArea className="flex-grow h-[200px] pr-2 mb-4">
+                  {newOrderItems.length === 0 ? (
+                      <p className="text-muted-foreground text-center py-10">No {pageMode === 'add_to_active' ? 'new' : ''} items in order.</p>
                   ) : (
-                      currentOrderItems.map(item => (
-                      <div key={item.id} className="py-2 border-b border-border last:border-b-0">
+                      newOrderItems.map(item => (
+                      <div key={(item as any).tempId} className="py-2 border-b border-border last:border-b-0">
                         <div className="flex justify-between items-start">
                             <div>
                             <p className="font-semibold">{item.name}</p>
@@ -472,12 +619,12 @@ function OrdersPageContent() {
                             <Input 
                                 type="number" 
                                 value={item.quantity}
-                                onChange={(e) => updateItemQuantity(item.id, parseInt(e.target.value))}
+                                onChange={(e) => updateNewItemQuantity((item as any).tempId, parseInt(e.target.value))}
                                 className="w-16 h-8 text-center"
                                 min="0"
                                 aria-label={`Quantity for ${item.name}`}
                             />
-                            <Dialog open={editingObservationItem?.id === item.id} onOpenChange={(open) => { if(!open) setEditingObservationItem(null); }}>
+                            <Dialog open={editingObservationItem?.tempId === (item as any).tempId} onOpenChange={(open) => { if(!open) setEditingObservationItem(null); }}>
                               <DialogTrigger asChild>
                                 <Button variant="ghost" size="icon" onClick={() => { setEditingObservationItem(item); setCurrentObservationText(item.observations || '');}} aria-label={`Edit observations for ${item.name}`}>
                                     <MessageSquare className="h-4 w-4" />
@@ -503,19 +650,19 @@ function OrdersPageContent() {
                                   </DialogFooter>
                                 </DialogContent>
                             </Dialog>
-                            <Button variant="ghost" size="icon" onClick={() => removeItemFromOrder(item.id)} aria-label={`Remove ${item.name}`}>
+                            <Button variant="ghost" size="icon" onClick={() => removeItemFromNewOrder((item as any).tempId)} aria-label={`Remove ${item.name}`}>
                                 <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                             </div>
                         </div>
                         {numberOfGuests && numberOfGuests > 1 && (
                             <div className="mt-1.5 flex items-center gap-2">
-                                <Label htmlFor={`guest-assign-${item.id}`} className="text-xs">Guest:</Label>
+                                <Label htmlFor={`guest-assign-${(item as any).tempId}`} className="text-xs">Guest:</Label>
                                 <Select 
                                     value={item.assignedGuest || `Guest 1`}
-                                    onValueChange={(value) => updateItemGuestAssignment(item.id, value)}
+                                    onValueChange={(value) => updateItemGuestAssignment((item as any).tempId, value)}
                                 >
-                                    <SelectTrigger id={`guest-assign-${item.id}`} className="h-7 text-xs w-28">
+                                    <SelectTrigger id={`guest-assign-${(item as any).tempId}`} className="h-7 text-xs w-28">
                                         <SelectValue placeholder="Assign Guest" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -534,14 +681,14 @@ function OrdersPageContent() {
                   <Separator className="my-4" />
 
                   <div className="space-y-2 text-sm mb-4">
-                    <div className="flex justify-between"><span>Subtotal:</span> <span>${subtotal.toFixed(2)}</span></div>
-                    <div className="flex justify-between font-bold text-lg text-primary"><span>Total (Approx.):</span> <span>${(subtotal * (1 + IVA_RATE)).toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span>Subtotal ({pageMode === 'add_to_active' ? 'New Items' : 'Order'}):</span> <span>${newOrderItems.reduce((s, i) => s + i.price * i.quantity, 0).toFixed(2)}</span></div>
+                    <div className="flex justify-between font-bold text-lg text-primary"><span>Total Approx. ({pageMode === 'add_to_active' ? 'New Items' : 'Order'}):</span> <span>${(newOrderItems.reduce((s, i) => s + i.price * i.quantity, 0) * (1 + IVA_RATE)).toFixed(2)}</span></div>
                   </div>
               </CardContent>
             </ScrollArea>
             <CardFooter className="flex-col gap-2 mt-auto border-t pt-4">
-               <Button className="w-full" size="lg" onClick={handleFinalizeAndSendToKitchen} disabled={orderIsOnHold && currentStep === 'building'}>
-                  Finalize & Send to Kitchen <Send className="ml-2 h-5 w-5" />
+               <Button className="w-full" size="lg" onClick={handleMainButtonClick} disabled={isOnHoldCheckout && pageMode === 'new_order'}>
+                  {mainButtonIcon} {mainButtonText}
                </Button>
             </CardFooter>
           </Card>
@@ -550,7 +697,7 @@ function OrdersPageContent() {
             <CardHeader>
               <div className="flex justify-between items-center">
                   <div>
-                      <CardTitle className="font-headline">Menu Items</CardTitle>
+                      <CardTitle className="font-headline flex items-center"><Utensils className="mr-2 h-5 w-5"/>Menu Items</CardTitle>
                       <CardDescription>Select items to add. Search by name or item code.</CardDescription>
                   </div>
                   <div className="flex gap-2">
@@ -562,17 +709,17 @@ function OrdersPageContent() {
                       </Button>
                   </div>
               </div>
-              <div className="flex gap-4 mt-4">
+              <div className="flex flex-col sm:flex-row gap-4 mt-4 items-center">
                 <Input 
-                  placeholder="Search menu (name or #)..." 
+                  placeholder="Search items by name or code..." 
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="max-w-xs"
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="max-w-sm"
                   aria-label="Search menu items"
                 />
                 <Select value={selectedCategory} onValueChange={(value) => setSelectedCategory(value as string | 'all')}>
-                  <SelectTrigger className="w-[180px]" aria-label="Filter by category">
-                    <SelectValue placeholder="All Categories" />
+                  <SelectTrigger className="w-full sm:w-[200px]">
+                    <SelectValue placeholder="Filter by category" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Categories</SelectItem>
@@ -674,17 +821,17 @@ function OrdersPageContent() {
         </div>
       )}
 
-      {currentStep === 'checkout' && (
+      {currentStep === 'checkout' && loadedOrderForCheckout && (
          <Card className="shadow-xl max-w-3xl mx-auto">
             <CardHeader>
                 <CardTitle className="font-headline flex items-center"><CreditCard className="mr-2 h-5 w-5"/>Payment Details</CardTitle>
-                <CardDescription>Review order #{currentEditingOrderId?.slice(-6)} and complete the payment.</CardDescription>
+                <CardDescription>Review order #{loadedOrderForCheckout.id.slice(-6)} and complete the payment.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
                 <div>
                     <h4 className="font-semibold mb-2">Order Summary</h4>
                     <ScrollArea className="h-[200px] border rounded-md p-3">
-                        {currentOrderItems.map(item => (
+                        {existingOrderItems.filter(i => i.status !== 'cancelled').map(item => (
                             <div key={item.id} className="flex justify-between items-start py-1.5 border-b last:border-b-0">
                                 <div>
                                     <p className="font-medium">{item.quantity}x {item.name} {item.assignedGuest && <span className="text-xs text-muted-foreground">({item.assignedGuest})</span>}</p>
@@ -696,10 +843,19 @@ function OrdersPageContent() {
                                       checked={!!itemsToSplit[item.id]}
                                       onCheckedChange={(checked) => setItemsToSplit(prev => ({...prev, [item.id]: !!checked}))}
                                       aria-label={`Select ${item.name} for separate payment`}
+                                      disabled={isCourtesyCheckout}
                                     />
                                   )}
                             </div>
                         ))}
+                         {existingOrderItems.filter(i => i.status === 'cancelled').length > 0 && (
+                            <div className="mt-2 pt-2 border-t">
+                                <p className="text-xs text-muted-foreground font-semibold mb-1">Cancelled Items:</p>
+                                {existingOrderItems.filter(i => i.status === 'cancelled').map(item => (
+                                    <p key={item.id} className="text-xs text-destructive line-through">{item.quantity}x {item.name}</p>
+                                ))}
+                            </div>
+                         )}
                     </ScrollArea>
                 </div>
 
@@ -708,7 +864,7 @@ function OrdersPageContent() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-3">
                         <Label className="font-headline">Tip Options</Label>
-                        <RadioGroup value={tipMode} onValueChange={(value) => setTipMode(value as TipMode)} disabled={isCourtesy}>
+                        <RadioGroup value={tipMode} onValueChange={(value) => setTipMode(value as TipMode)} disabled={isCourtesyCheckout}>
                             <div className="flex items-center space-x-2">
                                 <RadioGroupItem value="default" id="tipDefault" />
                                 <Label htmlFor="tipDefault">Default ({DEFAULT_TIP_PERCENTAGE}%)</Label>
@@ -727,7 +883,7 @@ function OrdersPageContent() {
                     </div>
                     <div className="space-y-3">
                          <Label className="font-headline">Discount Options</Label>
-                         <Select value={selectedDiscountId} onValueChange={(value) => {setSelectedDiscountId(value === 'none' ? undefined : value); setIsCourtesy(false);}} disabled={isCourtesy} >
+                         <Select value={selectedDiscountId} onValueChange={(value) => {setSelectedDiscountId(value === 'none' ? undefined : value);}} disabled={isCourtesyCheckout} >
                             <SelectTrigger aria-label="Select Discount">
                                 <SelectValue placeholder="No Discount" />
                             </SelectTrigger>
@@ -743,8 +899,8 @@ function OrdersPageContent() {
                  <Separator />
                  <div className="space-y-2 text-sm">
                     <div className="flex justify-between"><span>Subtotal:</span> <span>${subtotal.toFixed(2)}</span></div>
-                    {discountAmount > 0 && !isCourtesy && <div className="flex justify-between text-destructive"><span>Discount ({discountPercentage}%):</span> <span>-${discountAmount.toFixed(2)}</span></div>}
-                     {isCourtesy && <div className="flex justify-between text-green-600"><span>Courtesy Discount (100%):</span> <span>-${subtotal.toFixed(2)}</span></div>}
+                    {discountAmount > 0 && !isCourtesyCheckout && <div className="flex justify-between text-destructive"><span>Discount ({discountPercentage}%):</span> <span>-${discountAmount.toFixed(2)}</span></div>}
+                     {isCourtesyCheckout && <div className="flex justify-between text-green-600"><span>Courtesy Discount (100%):</span> <span>-${subtotal.toFixed(2)}</span></div>}
                     <div className="flex justify-between"><span>Subtotal after Discount:</span> <span>${subtotalAfterDiscount.toFixed(2)}</span></div>
                     <div className="flex justify-between"><span>Tip:</span> <span>${tipAmount.toFixed(2)}</span></div>
                     <div className="flex justify-between"><span>Tax ({(IVA_RATE * 100).toFixed(0)}%):</span> <span>${taxAmount.toFixed(2)}</span></div>
@@ -755,7 +911,7 @@ function OrdersPageContent() {
                 
                 <div className="space-y-4">
                     <Label className="font-headline">Payment Splitting (Mock)</Label>
-                    <Select value={paymentSplitType} onValueChange={(value) => setPaymentSplitType(value as PaymentSplitType)} disabled={isCourtesy}>
+                    <Select value={paymentSplitType} onValueChange={(value) => setPaymentSplitType(value as PaymentSplitType)} disabled={isCourtesyCheckout}>
                         <SelectTrigger aria-label="Payment Split Type">
                             <SelectValue placeholder="No Split" />
                         </SelectTrigger>
@@ -782,7 +938,7 @@ function OrdersPageContent() {
 
                 <div className="space-y-3">
                     <Label className="font-headline">Payment Method</Label>
-                    <Select value={paymentMethod} onValueChange={setPaymentMethod} disabled={isCourtesy}>
+                    <Select value={paymentMethod} onValueChange={setPaymentMethod} disabled={isCourtesyCheckout || isOnHoldCheckout}>
                         <SelectTrigger aria-label="Payment Method">
                             <SelectValue placeholder="Select Payment" />
                         </SelectTrigger>
@@ -817,36 +973,27 @@ function OrdersPageContent() {
 
                  <Separator />
                 <div className="space-y-3">
-                    <Label className="font-headline">Order Actions</Label>
+                    <Label className="font-headline">Order Actions (Reflected from Active Order)</Label>
                     <div className="flex flex-wrap gap-4 items-center">
                         <div className="flex items-center space-x-2">
-                            <Checkbox id="isCourtesy" checked={isCourtesy} onCheckedChange={(checked) => {
-                                setIsCourtesy(!!checked); 
-                                if(!!checked) {
-                                    setSelectedDiscountId(undefined); 
-                                    setTipMode('default'); 
-                                    setManualTipAmount(0); 
-                                    setCustomTipPercentage(DEFAULT_TIP_PERCENTAGE);
-                                    setPaymentMethod(undefined);
-                                    setPaymentSplitType('none');
-                                }
-                            }} />
-                            <Label htmlFor="isCourtesy" className="flex items-center"><CircleDollarSign className="mr-1 h-4 w-4 text-green-500"/>Mark as Courtesy</Label>
+                            <Checkbox id="isCourtesyCheckout" checked={isCourtesyCheckout} disabled={true} />
+                            <Label htmlFor="isCourtesyCheckout" className="flex items-center"><CircleDollarSign className="mr-1 h-4 w-4 text-green-500"/>Is Courtesy</Label>
                         </div>
                         <div className="flex items-center space-x-2">
-                            <Checkbox id="isOnHold" checked={orderIsOnHold} onCheckedChange={(checked) => setOrderIsOnHold(!!checked)} />
-                            <Label htmlFor="isOnHold" className="flex items-center"><WalletCards className="mr-1 h-4 w-4 text-yellow-500"/>Hold Bill</Label>
+                            <Checkbox id="isOnHoldCheckout" checked={isOnHoldCheckout} disabled={true} />
+                            <Label htmlFor="isOnHoldCheckout" className="flex items-center"><WalletCards className="mr-1 h-4 w-4 text-yellow-500"/>Is On Hold</Label>
                         </div>
                          <div className="flex items-center space-x-2">
-                            <Checkbox id="disableReceiptPrint" checked={disableReceiptPrint} onCheckedChange={(checked) => setDisableReceiptPrint(!!checked)} />
-                            <Label htmlFor="disableReceiptPrint" className="flex items-center"><EyeOff className="mr-1 h-4 w-4"/>No Receipt Print</Label>
+                            <Checkbox id="disableReceiptPrintCheckout" checked={disableReceiptPrintCheckout} disabled={true}/>
+                            <Label htmlFor="disableReceiptPrintCheckout" className="flex items-center"><EyeOff className="mr-1 h-4 w-4"/>No Receipt Print</Label>
                         </div>
                     </div>
                 </div>
             </CardContent>
             <CardFooter className="border-t pt-4">
-                 <Button className="w-full" size="lg" onClick={handleFinalizePayment} disabled={orderIsOnHold && !isCourtesy && currentStep === 'checkout'}>
-                    <Save className="mr-2 h-5 w-5" /> {isCourtesy ? "Finalize as Courtesy" : orderIsOnHold ? "Order is ON HOLD" : "Finalize & Pay"}
+                 <Button className="w-full" size="lg" onClick={handleFinalizePayment}>
+                    <Save className="mr-2 h-5 w-5" /> 
+                    {isCourtesyCheckout ? "Finalize as Courtesy" : isOnHoldCheckout ? "Confirm On Hold Status" : "Finalize & Pay"}
                  </Button>
             </CardFooter>
          </Card>
@@ -862,3 +1009,4 @@ export default function OrdersPage() {
     </Suspense>
   )
 }
+

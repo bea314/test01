@@ -35,7 +35,7 @@ export interface OrderItem {
   specialInstructions?: string;
   observations?: string;
   status: 'pending' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
-  assignedGuest?: string; // New: For assigning item to a specific guest
+  assignedGuest?: string; 
 }
 
 export interface DTEInvoiceInfo {
@@ -119,15 +119,15 @@ export interface Waiter {
 export interface BusinessFinancialInfo {
   businessName: string;
   legalName: string;
-  nit: string;
-  nrc: string;
-  taxpayerType: string;
-  economicActivity: string;
-  email: string;
+  nrc: string; // Registro Nacional de Contribuyente
+  nit: string; // Número de Identificación Tributaria
+  taxpayerType: string; // e.g., "Gran Contribuyente", "Mediano Contribuyente", "Pequeño Contribuyente", "Otro"
+  economicActivity: string; // Giro o Actividad Económica
+  address: string; // Dirección completa
+  municipality: string; // Municipio
+  department: string; // Departamento
   phone: string;
-  address?: string;
-  municipality?: string;
-  department?: string;
+  email: string;
 }
 
 export interface KitchenPrinter {
@@ -141,4 +141,7 @@ export interface DiscountPreset {
   name: string;
   percentage: number; // e.g., 15 for 15%
   description?: string;
+  applicableItemIds?: string[]; // New: For item-specific discounts
+  applicableCategoryIds?: string[]; // New: For category-specific discounts
 }
+
