@@ -8,7 +8,7 @@ export function Logo(props: SVGProps<SVGSVGElement>) {
       viewBox="0 0 200 50"
       width="120"
       height="30"
-      aria-label="Tabletop AI Logo"
+      aria-label="KREALIRES Logo"
       {...props}
     >
       <rect width="200" height="50" fill="transparent" />
@@ -20,7 +20,7 @@ export function Logo(props: SVGProps<SVGSVGElement>) {
         fontWeight="bold"
         fill="currentColor"
       >
-        Tabletop AI
+        KREALIRES
       </text>
     </svg>
   );

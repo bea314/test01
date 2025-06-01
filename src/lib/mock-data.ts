@@ -1,11 +1,13 @@
 
-import type { MenuItem, MenuItemCategory, User, UserRole, RestaurantTable } from '@/lib/types';
+import type { MenuItem, MenuItemCategory, User, UserRole, RestaurantTable, AllergyTag } from '@/lib/types';
 
 export const mockCategories: MenuItemCategory[] = [
   { id: "cat1", name: "Appetizers" },
   { id: "cat2", name: "Main Courses" },
   { id: "cat3", name: "Desserts" },
   { id: "cat4", name: "Beverages" },
+  { id: "cat5", name: "Salads" },
+  { id: "cat6", name: "Soups" },
 ];
 
 export const initialMenuItems: MenuItem[] = [
@@ -19,7 +21,8 @@ export const initialMenuItems: MenuItem[] = [
     number: "A01", 
     imageUrl: "https://placehold.co/150x100.png?text=Bruschetta",
     dataAiHint: "italian bread",
-    allergiesNotes: "Contains gluten. Vegan option available upon request."
+    allergiesNotes: "Vegan option available upon request.",
+    allergyTags: ['vegetarian']
   },
   { 
     id: "item2", 
@@ -31,7 +34,8 @@ export const initialMenuItems: MenuItem[] = [
     number: "M05", 
     imageUrl: "https://placehold.co/150x100.png?text=Carbonara",
     dataAiHint: "pasta dish",
-    allergiesNotes: "Contains gluten, dairy, and eggs."
+    allergiesNotes: "Contains gluten, dairy, and eggs.",
+    allergyTags: []
   },
   { 
     id: "item3", 
@@ -43,7 +47,8 @@ export const initialMenuItems: MenuItem[] = [
     number: "D02", 
     imageUrl: "https://placehold.co/150x100.png?text=Tiramisu",
     dataAiHint: "italian dessert",
-    allergiesNotes: "Contains dairy, eggs, gluten, and coffee."
+    allergiesNotes: "Contains dairy, eggs, gluten, and coffee.",
+    allergyTags: []
   },
   {
     id: 'item4',
@@ -55,7 +60,8 @@ export const initialMenuItems: MenuItem[] = [
     availability: 'available',
     imageUrl: 'https://placehold.co/150x100.png?text=Spring+Rolls',
     dataAiHint: "asian appetizer",
-    allergiesNotes: 'Contains gluten. Vegan.'
+    allergiesNotes: 'Vegan.',
+    allergyTags: ['vegan', 'vegetarian', 'dairy-free']
   },
   {
     id: 'item5',
@@ -67,7 +73,8 @@ export const initialMenuItems: MenuItem[] = [
     availability: 'available',
     imageUrl: 'https://placehold.co/150x100.png?text=Salmon',
     dataAiHint: "fish dish",
-    allergiesNotes: 'Contains fish. Gluten-free.'
+    allergiesNotes: 'Contains fish.',
+    allergyTags: ['gluten-free']
   },
   {
     id: 'item6',
@@ -79,7 +86,8 @@ export const initialMenuItems: MenuItem[] = [
     availability: 'available',
     imageUrl: 'https://placehold.co/150x100.png?text=Lava+Cake',
     dataAiHint: "chocolate dessert",
-    allergiesNotes: 'Contains dairy, eggs, gluten.'
+    allergiesNotes: 'Contains dairy, eggs, gluten.',
+    allergyTags: []
   },
   {
     id: 'item7',
@@ -90,17 +98,44 @@ export const initialMenuItems: MenuItem[] = [
     number: 'R01',
     availability: 'available',
     imageUrl: 'https://placehold.co/150x100.png?text=Iced+Tea',
-    dataAiHint: "cold beverage"
+    dataAiHint: "cold beverage",
+    allergyTags: ['vegan', 'gluten-free', 'dairy-free', 'nut-free']
+  },
+  {
+    id: 'item8',
+    name: 'Caesar Salad',
+    description: 'Crisp romaine lettuce, parmesan cheese, croutons, and Caesar dressing.',
+    price: 12.00,
+    category: mockCategories[4], 
+    number: 'S01',
+    availability: 'available',
+    imageUrl: 'https://placehold.co/150x100.png?text=Caesar+Salad',
+    dataAiHint: 'classic salad',
+    allergiesNotes: 'Contains dairy and gluten. Anchovies in dressing.',
+    allergyTags: []
+  },
+  {
+    id: 'item9',
+    name: 'Tomato Soup',
+    description: 'Creamy tomato soup served with a slice of garlic bread.',
+    price: 7.50,
+    category: mockCategories[5],
+    number: 'P01',
+    availability: 'available',
+    imageUrl: 'https://placehold.co/150x100.png?text=Tomato+Soup',
+    dataAiHint: 'warm soup',
+    allergiesNotes: 'Contains dairy and gluten (bread).',
+    allergyTags: ['vegetarian']
   }
 ];
 
 export const userRoles: UserRole[] = ['admin', 'cashier', 'waiter'];
 
 export const initialStaff: User[] = [
-  { id: "staff1", name: "Alice Wonderland", email: "alice@tabletop.ai", role: "admin" },
-  { id: "staff2", name: "Bob The Builder", email: "bob@tabletop.ai", role: "waiter" },
-  { id: "staff3", name: "Charlie Chaplin", email: "charlie@tabletop.ai", role: "cashier" },
-  { id: "staff4", name: "Diana Prince", email: "diana@tabletop.ai", role: "waiter" },
+  { id: "staff1", name: "Alice Wonderland", email: "alice@krealiares.com", role: "admin" },
+  { id: "staff2", name: "Bob The Builder", email: "bob@krealiares.com", role: "waiter" },
+  { id: "staff3", name: "Charlie Chaplin", email: "charlie@krealiares.com", role: "cashier" },
+  { id: "staff4", name: "Diana Prince", email: "diana@krealiares.com", role: "waiter" },
 ];
 
 export const initialTables: RestaurantTable[] = [

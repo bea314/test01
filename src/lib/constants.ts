@@ -22,6 +22,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/dashboard/settings', label: 'Settings', icon: Settings, roles: ['admin'] },
 ];
 
-export const APP_NAME = "Tabletop AI";
+export const APP_NAME = "KREALIRES";
 
 export const IVA_RATE = 0.13; // Example: 13% IVA for El Salvador
+

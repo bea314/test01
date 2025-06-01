@@ -1,3 +1,4 @@
+
 import type {Metadata} from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
@@ -5,7 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 // import { app } from "@/lib/firebase"; // Assuming firebase config is in lib/firebase
 
 export const metadata: Metadata = {
-  title: 'Tabletop AI',
+  title: 'KREALIRES',
   description: 'Restaurant Management System with AI Features',
 };
 

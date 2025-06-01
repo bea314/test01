@@ -1,6 +1,7 @@
 
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,9 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard } from "lucide-react";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import type { OrderItem, MenuItem as MenuItemType, OrderType, Waiter, Order } from '@/lib/types';
+import type { OrderItem, MenuItem as MenuItemType, OrderType, Waiter, Order, AllergyTag } from '@/lib/types';
 import { IVA_RATE } from '@/lib/constants';
 import Image from 'next/image';
+import { Badge } from '@/components/ui/badge';
 import { initialMenuItems as mockMenuItemsAll, mockCategories as mockMenuCategories, initialStaff } from '@/lib/mock-data';
 import {
   Dialog,
@@ -22,7 +24,6 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTrigger,
-  DialogClose,
 } from "@/components/ui/dialog";
 import {
   Tooltip,
@@ -34,14 +35,17 @@ import {
 type MenuView = 'grid' | 'list';
 type OrderStep = 'building' | 'checkout';
 
-export default function OrdersPage() {
+function OrdersPageContent() {
+  const searchParams = useSearchParams();
+  const initialOrderTypeParam = searchParams.get('type') as OrderType | null;
+
   const [currentStep, setCurrentStep] = useState<OrderStep>('building');
   const [currentOrderItems, setCurrentOrderItems] = useState<OrderItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>(undefined);
   const [menuView, setMenuView] = useState<MenuView>('grid');
   
-  const [orderType, setOrderType] = useState<OrderType>('Dine-in');
+  const [orderType, setOrderType] = useState<OrderType>(initialOrderTypeParam || 'Dine-in');
   const [selectedWaiter, setSelectedWaiter] = useState<string | undefined>(initialStaff[0]?.id);
   const [tipPercentage, setTipPercentage] = useState<number>(15);
   const [manualTip, setManualTip] = useState<number>(0);
@@ -55,6 +59,12 @@ export default function OrdersPage() {
 
   const [editingObservationItem, setEditingObservationItem] = useState<OrderItem | null>(null);
   const [currentObservationText, setCurrentObservationText] = useState('');
+
+  useEffect(() => {
+    if (initialOrderTypeParam) {
+      setOrderType(initialOrderTypeParam);
+    }
+  }, [initialOrderTypeParam]);
 
   const addItemToOrder = (menuItem: MenuItemType) => {
     setCurrentOrderItems(prevItems => {
@@ -127,7 +137,6 @@ export default function OrdersPage() {
       
       {currentStep === 'building' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Column 1: Current Order (Primary on mobile, first column on lg) */}
           <Card className="shadow-xl lg:order-1">
             <CardHeader>
               <CardTitle className="font-headline flex items-center"><ShoppingCart className="mr-2 h-5 w-5"/>Current Order</CardTitle>
@@ -174,12 +183,31 @@ export default function OrdersPage() {
                               min="0"
                               aria-label={`Quantity for ${item.name}`}
                           />
-                          <Dialog>
+                          <Dialog open={editingObservationItem?.id === item.id} onOpenChange={(open) => { if(!open) setEditingObservationItem(null); }}>
                             <DialogTrigger asChild>
                               <Button variant="ghost" size="icon" onClick={() => { setEditingObservationItem(item); setCurrentObservationText(item.observations || '');}} aria-label={`Edit observations for ${item.name}`}>
                                   <MessageSquare className="h-4 w-4" />
                               </Button>
                             </DialogTrigger>
+                             <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Add/Edit Observations for {item.name}</DialogTitle>
+                                  <DialogDescription>
+                                    Enter any special notes or observations for this item.
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <Textarea
+                                  value={currentObservationText}
+                                  onChange={(e) => setCurrentObservationText(e.target.value)}
+                                  placeholder="e.g., Extra spicy, no onions, etc."
+                                  rows={4}
+                                  className="my-4"
+                                />
+                                <DialogFooter>
+                                  <Button variant="outline" onClick={() => setEditingObservationItem(null) }>Cancel</Button>
+                                  <Button onClick={handleSaveObservation}>Save Observations</Button>
+                                </DialogFooter>
+                              </DialogContent>
                           </Dialog>
                           <Button variant="ghost" size="icon" onClick={() => removeItemFromOrder(item.id)} aria-label={`Remove ${item.name}`}>
                               <Trash2 className="h-4 w-4 text-destructive" />
@@ -207,7 +235,6 @@ export default function OrdersPage() {
             </CardFooter>
           </Card>
           
-          {/* Column 2: Menu Items (Secondary on mobile, second column on lg) */}
           <Card className="lg:col-span-2 shadow-xl lg:order-2">
             <CardHeader>
               <div className="flex justify-between items-center">
@@ -251,16 +278,23 @@ export default function OrdersPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {filteredMenuItems.map(item => (
                       <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow flex flex-col">
-                        <Image src={item.imageUrl || `https://placehold.co/300x200.png?text=${item.name.replace(/\s/g,'+')}`} alt={item.name} width={300} height={200} className="w-full h-32 object-cover aspect-[3/2]" data-ai-hint="food item"/>
+                        <Image src={item.imageUrl || `https://placehold.co/300x200.png?text=${item.name.replace(/\s/g,'+')}`} alt={item.name} width={300} height={200} className="w-full h-32 object-cover aspect-[3/2]" data-ai-hint={item.dataAiHint || "food item"}/>
                         <CardContent className="p-3 flex flex-col flex-grow">
                           <h3 className="font-semibold text-md mb-1 font-headline">#{item.number} - {item.name}</h3>
                           <p className="text-xs text-muted-foreground mb-1 flex-grow truncate-2-lines">{item.description}</p>
+                           {item.allergyTags && item.allergyTags.length > 0 && (
+                            <div className="my-1 flex flex-wrap gap-1">
+                              {item.allergyTags.map(tag => (
+                                <Badge key={tag} variant="outline" className="text-xs capitalize border-amber-500 text-amber-600">{tag.replace('-', ' ')}</Badge>
+                              ))}
+                            </div>
+                          )}
                            {item.allergiesNotes && (
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <p className="text-xs text-amber-600 mt-1 mb-1 flex items-center cursor-default">
-                                      <Info className="h-3 w-3 mr-1" /> Allergy Info
+                                      <Info className="h-3 w-3 mr-1" /> Additional Allergy Info
                                     </p>
                                   </TooltipTrigger>
                                   <TooltipContent className="max-w-xs">
@@ -279,7 +313,7 @@ export default function OrdersPage() {
                       </Card>
                     ))}
                   </div>
-                ) : ( // List view
+                ) : ( 
                   <div className="space-y-2">
                     {filteredMenuItems.map(item => (
                       <Card key={item.id} className="p-3 hover:shadow-md transition-shadow">
@@ -287,12 +321,19 @@ export default function OrdersPage() {
                           <div>
                             <h3 className="font-semibold text-md font-headline">#{item.number} - {item.name}</h3>
                             <p className="text-xs text-muted-foreground">${item.price.toFixed(2)}</p>
+                             {item.allergyTags && item.allergyTags.length > 0 && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {item.allergyTags.map(tag => (
+                                  <Badge key={tag} variant="outline" className="text-xs capitalize border-amber-500 text-amber-600">{tag.replace('-', ' ')}</Badge>
+                                ))}
+                              </div>
+                            )}
                              {item.allergiesNotes && (
                               <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <p className="text-xs text-amber-600 mt-1 flex items-center cursor-default">
-                                      <Info className="h-3 w-3 mr-1" /> Allergy Info
+                                      <Info className="h-3 w-3 mr-1" /> Additional Allergy Info
                                     </p>
                                   </TooltipTrigger>
                                   <TooltipContent className="max-w-xs">
@@ -365,7 +406,6 @@ export default function OrdersPage() {
 
                 <Separator />
                 
-                {/* Placeholder for Payment Splitting UI - To be added in next iteration */}
                 <div className="p-4 border border-dashed rounded-md text-center">
                     <p className="text-muted-foreground text-sm">Payment splitting options (by item, manual, percentage, clients) will be available here soon.</p>
                 </div>
@@ -414,36 +454,14 @@ export default function OrdersPage() {
             </CardFooter>
          </Card>
       )}
-
-      {editingObservationItem && (
-        <Dialog open={!!editingObservationItem} onOpenChange={() => {
-          setEditingObservationItem(null); // Always close, save happens explicitly
-          // setCurrentObservationText(''); // Don't clear if just closing without saving
-        }}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add/Edit Observations for {editingObservationItem?.name}</DialogTitle>
-              <DialogDescription>
-                Enter any special notes or observations for this item.
-              </DialogDescription>
-            </DialogHeader>
-            <Textarea
-              value={currentObservationText}
-              onChange={(e) => setCurrentObservationText(e.target.value)}
-              placeholder="e.g., Extra spicy, no onions, etc."
-              rows={4}
-              className="my-4"
-            />
-            <DialogFooter>
-              <Button variant="outline" onClick={() => {setEditingObservationItem(null); /* Don't clear currentObservationText here */ }}>Cancel</Button>
-              <Button onClick={() => { handleSaveObservation(); setEditingObservationItem(null);}}>Save Observations</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
     </div>
   );
 }
 
-
-    
+export default function OrdersPage() {
+  return (
+    <Suspense fallback={<div>Loading order options...</div>}>
+      <OrdersPageContent />
+    </Suspense>
+  )
+}

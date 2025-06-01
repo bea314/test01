@@ -68,6 +68,24 @@ export interface MenuItemCategory {
   name: string;
 }
 
+export type AllergyTag = 
+  | 'gluten-free' 
+  | 'vegan' 
+  | 'vegetarian' 
+  | 'nut-free' 
+  | 'dairy-free' 
+  | 'shellfish-free';
+
+export const ALLERGY_TAG_OPTIONS: AllergyTag[] = [
+  'gluten-free', 
+  'vegan', 
+  'vegetarian', 
+  'nut-free', 
+  'dairy-free', 
+  'shellfish-free'
+];
+
+
 export interface MenuItem {
   id: string;
   name: string;
@@ -78,7 +96,8 @@ export interface MenuItem {
   dataAiHint?: string;
   availability: 'available' | 'unavailable';
   number?: string; 
-  allergiesNotes?: string; 
+  allergiesNotes?: string;
+  allergyTags?: AllergyTag[];
 }
 
 export interface Waiter {

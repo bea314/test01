@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
 
 export function DashboardHeader() {
   // Placeholder user data
-  const user = { name: "Admin User", email: "admin@tabletop.ai", initials: "AU" };
+  const user = { name: "Admin User", email: "admin@krealiares.com", initials: "AU" };
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4 md:px-6">
@@ -26,7 +26,7 @@ export function DashboardHeader() {
         <SidebarTrigger />
       </div>
       <div className="flex-1">
-        <Link href="/dashboard" className="text-xl font-headline font-semibold text-primary hidden md:block">
+        <Link href="/dashboard/home" className="text-xl font-headline font-semibold text-primary hidden md:block">
           {APP_NAME}
         </Link>
       </div>

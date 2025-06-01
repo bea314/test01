@@ -83,7 +83,7 @@ export default function HomePage() {
       title: "Kitchen Display",
       description: "Access the kitchen order display (Mock).",
       icon: Eye,
-      href: "#",
+      href: "#", // This could link to an AlertDialog trigger or a placeholder page
     },
     {
       title: "Settings",

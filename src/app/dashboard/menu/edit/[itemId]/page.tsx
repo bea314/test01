@@ -8,9 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Save, UploadCloud, ArrowLeft, Loader2 } from "lucide-react";
-import type { MenuItem as MenuItemType } from '@/lib/types';
-import { initialMenuItems, mockCategories } from '@/lib/mock-data'; // Import mock data
+import type { MenuItem as MenuItemType, AllergyTag } from '@/lib/types';
+import { ALLERGY_TAG_OPTIONS } from '@/lib/types';
+import { initialMenuItems, mockCategories } from '@/lib/mock-data';
 import Link from 'next/link';
 
 export default function EditMenuItemPage() {
@@ -21,7 +23,6 @@ export default function EditMenuItemPage() {
   const [menuItem, setMenuItem] = useState<MenuItemType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Form state
   const [itemName, setItemName] = useState('');
   const [itemDescription, setItemDescription] = useState('');
   const [itemPrice, setItemPrice] = useState('');
@@ -30,10 +31,10 @@ export default function EditMenuItemPage() {
   const [itemNumber, setItemNumber] = useState('');
   const [itemImageUrl, setItemImageUrl] = useState('');
   const [itemAllergiesNotes, setItemAllergiesNotes] = useState('');
+  const [itemAllergyTags, setItemAllergyTags] = useState<AllergyTag[]>([]);
 
   useEffect(() => {
     if (itemId) {
-      // Simulate fetching item data
       const itemToEdit = initialMenuItems.find(item => item.id === itemId);
       if (itemToEdit) {
         setMenuItem(itemToEdit);
@@ -45,14 +46,20 @@ export default function EditMenuItemPage() {
         setItemNumber(itemToEdit.number || '');
         setItemImageUrl(itemToEdit.imageUrl || '');
         setItemAllergiesNotes(itemToEdit.allergiesNotes || '');
+        setItemAllergyTags(itemToEdit.allergyTags || []);
       } else {
-        // Handle item not found, e.g., redirect or show error
         alert("Menu item not found!");
         router.push('/dashboard/menu');
       }
       setIsLoading(false);
     }
   }, [itemId, router]);
+
+  const handleAllergyTagChange = (tag: AllergyTag, checked: boolean) => {
+    setItemAllergyTags(prev => 
+      checked ? [...prev, tag] : prev.filter(t => t !== tag)
+    );
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,12 +80,12 @@ export default function EditMenuItemPage() {
       availability: itemAvailability,
       number: itemNumber,
       imageUrl: itemImageUrl || `https://placehold.co/150x100.png?text=${itemName.replace(/\s/g,'+')}`,
+      dataAiHint: itemName.toLowerCase().split(' ').slice(0,2).join(' '),
       allergiesNotes: itemAllergiesNotes,
+      allergyTags: itemAllergyTags,
     };
 
     console.log("Updating menu item (mock):", updatedItem);
-    // In a real app, you would send this to your backend to save.
-    // For this prototype, we'll just log and redirect.
     alert("Menu item updated (mock)! Check console. Data changes will not persist back to the list in this prototype.");
     router.push('/dashboard/menu');
   };
@@ -120,7 +127,7 @@ export default function EditMenuItemPage() {
           <CardDescription>Modify the information for menu item: {menuItem?.name}</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <Label htmlFor="itemName">Item Name</Label>
               <Input id="itemName" value={itemName} onChange={e => setItemName(e.target.value)} required />
@@ -163,8 +170,27 @@ export default function EditMenuItemPage() {
              <Button type="button" variant="outline" className="w-full">
               <UploadCloud className="mr-2 h-4 w-4" /> Upload Image (Mock)
             </Button>
+
             <div>
-                <Label htmlFor="itemAllergiesNotes">Allergy Notes (Optional)</Label>
+              <Label>Allergy Tags</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2 border rounded-md">
+                {ALLERGY_TAG_OPTIONS.map(tag => (
+                  <div key={tag} className="flex items-center space-x-2">
+                    <Checkbox 
+                      id={`allergy-${tag}`} 
+                      checked={itemAllergyTags.includes(tag)}
+                      onCheckedChange={(checked) => handleAllergyTagChange(tag, !!checked)}
+                    />
+                    <Label htmlFor={`allergy-${tag}`} className="text-sm font-normal capitalize">
+                      {tag.replace('-', ' ')}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+                <Label htmlFor="itemAllergiesNotes">Additional Allergy Notes (Optional)</Label>
                 <Textarea id="itemAllergiesNotes" value={itemAllergiesNotes} onChange={e => setItemAllergiesNotes(e.target.value)} placeholder="e.g., Contains nuts, gluten-free option available"/>
             </div>
             <CardFooter className="p-0 pt-6">

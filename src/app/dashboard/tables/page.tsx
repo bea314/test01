@@ -7,6 +7,17 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { PlusCircle, Edit3, Trash2, Grid } from "lucide-react";
 import type { RestaurantTable } from '@/lib/types';
 import { initialTables as allTables } from '@/lib/mock-data';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function TablesPage() {
   const [displayTables, setDisplayTables] = useState<RestaurantTable[]>(allTables);
@@ -30,9 +41,26 @@ export default function TablesPage() {
               <PlusCircle className="mr-2 h-4 w-4" /> Add New Table
             </Link>
           </Button>
-           <Button variant="secondary">
-              <Grid className="mr-2 h-4 w-4" /> Configure Visual Layout (Mock)
-            </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="secondary">
+                <Grid className="mr-2 h-4 w-4" /> Configure Visual Layout (Mock)
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Feature Not Yet Implemented</AlertDialogTitle>
+                <AlertDialogDescription>
+                  The visual table layout configuration tool is currently under development. 
+                  This feature will allow you to drag and drop tables to create a custom floor plan.
+                  Stay tuned for updates!
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogAction>OK</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
       
@@ -51,9 +79,9 @@ export default function TablesPage() {
                   <p className="text-sm text-muted-foreground">Capacity: {table.capacity}</p>
                   <p className={`text-sm font-medium ${
                     table.status === 'available' ? 'text-green-500' :
-                    table.status === 'occupied' ? 'text-blue-500' : // Updated to blue for consistency with badges
+                    table.status === 'occupied' ? 'text-blue-500' :
                     table.status === 'reserved' ? 'text-yellow-500' :
-                    'text-muted-foreground' // Fallback
+                    'text-muted-foreground' 
                   }`}>
                     Status: {table.status.charAt(0).toUpperCase() + table.status.slice(1)}
                   </p>
