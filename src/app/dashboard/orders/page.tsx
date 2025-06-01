@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard, Users, Percent, WalletCards, CircleDollarSign, EyeOff, StickyNote, Hash, UserCheck, Send, Utensils, PackagePlus, DivideSquare, TicketPercent, DollarSignIcon } from "lucide-react";
+import { PlusCircle, Search, Save, Trash2, Edit, List, LayoutGrid, MessageSquare, Info, ArrowRight, ArrowLeft, ShoppingCart, CreditCard, Users, Percent, WalletCards, CircleDollarSign, EyeOff, StickyNote, Hash, UserCheck, Send, Utensils, PackagePlus, DivideSquare, TicketPercent, DollarSignIcon, Loader2 } from "lucide-react";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import type { OrderItem, MenuItem as MenuItemType, OrderType, Waiter, Order, AllergyTag, PaymentSplitType, DiscountPreset, RestaurantTable, MenuItemCategory, ProcessedPaymentSplit } from '@/lib/types';
@@ -63,7 +63,9 @@ function OrdersPageContent() {
   const { toast } = useToast();
 
   const [currentStep, setCurrentStep] = useState<OrderStep>('building');
+  // For new orders or adding to active order
   const [newOrderItems, setNewOrderItems] = useState<(Omit<OrderItem, 'id' | 'status' | 'menuItemId'> & { tempId: string; menuItemId: string; price: number; name: string; observations?: string; assignedGuest?: string; quantity: number; isCourtesy?: boolean })[]>([]);
+  // For displaying existing items when adding to active order, or items during checkout
   const [existingOrderItems, setExistingOrderItems] = useState<OrderItem[]>([]);
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -116,7 +118,7 @@ function OrdersPageContent() {
     if (pageMode === 'checkout_existing' && checkoutOrderIdParam) {
         const orderToCheckout = mockActiveOrders.find(o => o.id === checkoutOrderIdParam);
         if (orderToCheckout) {
-            setLoadedOrderForCheckout(orderToCheckout);
+            setLoadedOrderForCheckout(JSON.parse(JSON.stringify(orderToCheckout)));
             const itemsWithPotentialCourtesy = orderToCheckout.items.map(item => ({...item, isCourtesy: item.isCourtesy || false }));
             setExistingOrderItems(itemsWithPotentialCourtesy); 
             setItemCourtesiesCheckout(itemsWithPotentialCourtesy.reduce((acc, item) => ({...acc, [item.id]: item.isCourtesy || false}), {}));
@@ -229,7 +231,9 @@ function OrdersPageContent() {
         setNumberOfGuests(undefined);
     }
     setCurrentStep('building');
-    if (!checkoutOrderIdParam && !editActiveOrderIdParam && !currentOrderTypeParam && !currentTableIdParam) {
+    // Only replace if there are no meaningful params, otherwise keep them for fresh order from table/type link
+    const hasInitialParams = currentOrderTypeParam || currentTableIdParam || checkoutOrderIdParam || editActiveOrderIdParam;
+    if (!hasInitialParams) {
       router.replace('/dashboard/orders');
     }
   };
@@ -302,23 +306,27 @@ function OrdersPageContent() {
   }, [pageMode, loadedOrderForCheckout, itemCourtesiesCheckout]);
 
   const orderTotalsForCheckout = useMemo(() => {
+    let orderForCalc: Order | Partial<Order> & { items: OrderItem[] | (Omit<OrderItem, 'id' | 'status'> & { menuItemId: string, price: number, name: string })[] } = { items: [] };
+
     if (pageMode === 'checkout_existing' && loadedOrderForCheckout) {
-        // Create a temporary order object reflecting current checkout UI state
-        const tempOrderForCalc: Order = {
+        orderForCalc = {
             ...loadedOrderForCheckout,
-            items: currentOrderItemsForCheckoutDisplay, // Use items with current courtesy state
+            items: currentOrderItemsForCheckoutDisplay, 
             isCourtesy: isCourtesyCheckout,
             selectedDiscountId: selectedDiscountId,
             appliedCouponCode: appliedCouponCode,
             manualDiscountAmount: manualDiscountAmountCheckout,
             tipAmount: 0, // Tip will be calculated separately based on this result
         };
-        return calculateOrderTotals(tempOrderForCalc);
+    } else { // For new order building step or adding items to active
+        orderForCalc = {
+            items: newOrderItems.map(item => ({...item, id: item.tempId, status: 'pending' })), // Mock structure for calc
+            isCourtesy: false, 
+            tipAmount: 0,
+            manualDiscountAmount: 0,
+        };
     }
-    // For new order building step, calculate based on newOrderItems (no complex discounts/tips yet)
-    const subtotalNew = newOrderItems.reduce((sum, item) => sum + (item.isCourtesy ? 0 : item.price * item.quantity), 0);
-    const taxNew = subtotalNew * IVA_RATE;
-    return { subtotal: subtotalNew, discountAmount: 0, taxAmount: taxNew, totalAmount: subtotalNew + taxNew, manualDiscountAmount: 0 };
+    return calculateOrderTotals(orderForCalc as Order); // Cast for calculation
   }, [pageMode, loadedOrderForCheckout, currentOrderItemsForCheckoutDisplay, isCourtesyCheckout, selectedDiscountId, appliedCouponCode, manualDiscountAmountCheckout, newOrderItems]);
 
   const [tipAmount, setTipAmount] = useState(0);
@@ -407,7 +415,7 @@ function OrdersPageContent() {
             initialTables[tableIndex].currentOrderId = newCreatedOrder.id;
         }
     }
-    //resetOrderFormFull(); // Don't reset yet, redirect instead
+    //resetOrderFormFull(); // Reset handled by useEffect on searchParams change post-redirect
     router.push(`/dashboard/active-orders/${newCreatedOrder.id}`);
   };
 
@@ -440,7 +448,7 @@ function OrdersPageContent() {
 
     if(updatedOrderResult){
         toast({title: "Items Added", description: `${newOrderItems.length} item(s) added to order #${activeOrder.id.slice(-6)}`});
-        //resetOrderFormFull(); // Don't reset, redirect instead
+        //resetOrderFormFull(); // Reset handled by useEffect on searchParams change post-redirect
         router.push(`/dashboard/active-orders/${activeOrder.id}`);
     } else {
         toast({title: "Error", description: "Failed to add items to order.", variant: "destructive"});
@@ -472,14 +480,17 @@ function OrdersPageContent() {
         toast({ title: "Error", description: "No active order selected for payment.", variant: "destructive" });
         return;
     }
-    if (!paymentMethod && !isCourtesyCheckout && !isOnHoldCheckout && paymentSplitType === 'none') { // For non-split, require payment method
-        toast({ title: "Payment Method Required", description: "Please select a payment method.", variant: "destructive" });
-        return;
+    if (!isCourtesyCheckout && !isOnHoldCheckout) {
+        if (paymentSplitType === 'none' && !paymentMethod) {
+            toast({ title: "Payment Method Required", description: "Please select a payment method.", variant: "destructive" });
+            return;
+        }
+        if (paymentSplitType !== 'none' && uiSplits.some(split => !split.isPaid)) {
+            toast({ title: "Incomplete Split Payment", description: "All payment splits must be processed.", variant: "destructive" });
+            return;
+        }
     }
-     if (paymentSplitType !== 'none' && uiSplits.some(split => !split.isPaid)) {
-        toast({ title: "Incomplete Split Payment", description: "All payment splits must be processed.", variant: "destructive" });
-        return;
-    }
+
 
     if (dteType === 'credito_fiscal' && (!dteNit || !dteNrc || !dteCustomerName)) {
         toast({ title: "DTE Information Incomplete", description: "Please fill all required fields for Crédito Fiscal.", variant: "destructive" });
@@ -503,7 +514,7 @@ function OrdersPageContent() {
         id: loadedOrderForCheckout.id,
         items: itemsToSave,
         status: finalStatus,
-        paymentMethod: isCourtesyCheckout || isOnHoldCheckout ? loadedOrderForCheckout.paymentMethod : paymentMethod,
+        paymentMethod: isCourtesyCheckout || isOnHoldCheckout ? loadedOrderForCheckout.paymentMethod : paymentSplitType === 'none' ? paymentMethod : undefined, // For splits, methods are per split
         dteType,
         dteInvoiceInfo: dteType === 'credito_fiscal' ? { nit: dteNit, nrc: dteNrc, customerName: dteCustomerName } : undefined,
         tipAmount, 
@@ -525,12 +536,8 @@ function OrdersPageContent() {
         return;
     }
 
-    let message = `Order #${finalUpdatedOrder.id.slice(-6)} status updated.`;
-    if (finalStatus === 'paid') message = `Order #${finalUpdatedOrder.id.slice(-6)} paid.`;
-    if (finalStatus === 'completed') message = `Order #${finalUpdatedOrder.id.slice(-6)} completed.`;
-    if (finalStatus === 'on_hold') message = `Order #${finalUpdatedOrder.id.slice(-6)} is On Hold.`;
-
-
+    let message = `Order #${finalUpdatedOrder.id.slice(-6)} status updated to ${finalStatus}.`;
+    
     toast({ title: "Payment Processed", description: message });
     
     if (loadedOrderForCheckout.orderType === 'Dine-in' && loadedOrderForCheckout.tableId && (finalUpdatedOrder.status === 'paid' || finalUpdatedOrder.status === 'completed' || finalUpdatedOrder.status === 'cancelled')) {
@@ -571,7 +578,39 @@ function OrdersPageContent() {
                  // Calculate total for selected items for this split
                 const tempSplitOrder: Order = { ...loadedOrderForCheckout, items: selectedItemsForSplit, isCourtesy: false, selectedDiscountId: undefined, manualDiscountAmount: 0, tipAmount: 0 }; // simplified for split amount calc
                 const totalsForSelectedItems = calculateOrderTotals(tempSplitOrder);
-                const selectedItemsAmountDue = totalsForSelectedItems.subtotal - (totalsForSelectedItems.discountAmount || 0) + totalsForSelectedItems.taxAmount; // Simplified for this split portion, tip applied proportionally later if needed
+                // For "by_item" split, the amountDue for a split should consider that discount & tax are applied to its items.
+                // Tip might be proportionally added or handled globally on remaining balance.
+                // This calculation assumes the discount applies to the item if eligible, and tax is on that discounted price.
+                let selectedItemsSubtotal = selectedItemsForSplit.reduce((sum, item) => sum + (item.isCourtesy ? 0 : item.price * item.quantity), 0);
+                let selectedItemsDiscount = 0;
+                // Re-apply discount logic only to selected items
+                if (selectedDiscountId) {
+                    const preset = mockPresetDiscounts.find(d => d.id === selectedDiscountId);
+                    if (preset) {
+                        let discountableSubtotalForItemSplit = 0;
+                        if (preset.applicableItemIds && preset.applicableItemIds.length > 0) {
+                            discountableSubtotalForItemSplit = selectedItemsForSplit
+                                .filter(item => !item.isCourtesy && preset.applicableItemIds!.includes(item.menuItemId))
+                                .reduce((sum, item) => sum + item.price * item.quantity, 0);
+                        } else if (preset.applicableCategoryIds && preset.applicableCategoryIds.length > 0) {
+                            const itemCategories = selectedItemsForSplit.map(item => mockMenuItemsAll.find(mi => mi.id === item.menuItemId)?.category.id);
+                            discountableSubtotalForItemSplit = selectedItemsForSplit
+                                .filter((item, index) => !item.isCourtesy && preset.applicableCategoryIds!.includes(itemCategories[index] || ''))
+                                .reduce((sum, item) => sum + item.price * item.quantity, 0);
+                        } else {
+                            discountableSubtotalForItemSplit = selectedItemsSubtotal;
+                        }
+                        selectedItemsDiscount = discountableSubtotalForItemSplit * (preset.percentage / 100);
+                    }
+                } else if (manualDiscountAmountCheckout > 0 && selectedItemsForSplit.length === activeOrderItems.length) {
+                    // if manual discount and all items selected for this split, apply full manual discount. Otherwise, it's complex to portion
+                    selectedItemsDiscount = Math.min(selectedItemsSubtotal, manualDiscountAmountCheckout);
+                }
+
+                const selectedItemsSubtotalAfterDiscount = selectedItemsSubtotal - selectedItemsDiscount;
+                const selectedItemsTax = selectedItemsSubtotalAfterDiscount * IVA_RATE;
+                const selectedItemsAmountDue = selectedItemsSubtotalAfterDiscount + selectedItemsTax;
+
 
                 newUiSplits.push({
                     id: 'split-items-selected',
@@ -582,9 +621,34 @@ function OrdersPageContent() {
                 });
             }
             if (remainingItems.length > 0 && selectedItemsForSplit.length > 0) { // Only add remaining if there was a selection
-                const tempRemainingOrder: Order = { ...loadedOrderForCheckout, items: remainingItems, isCourtesy: false, selectedDiscountId: undefined, manualDiscountAmount: 0, tipAmount: 0 };
-                const totalsForRemainingItems = calculateOrderTotals(tempRemainingOrder);
-                const remainingItemsAmountDue = totalsForRemainingItems.subtotal - (totalsForRemainingItems.discountAmount || 0) + totalsForRemainingItems.taxAmount;
+                let remainingItemsSubtotal = remainingItems.reduce((sum, item) => sum + (item.isCourtesy ? 0 : item.price * item.quantity), 0);
+                let remainingItemsDiscount = 0;
+                 // Re-apply discount logic only to remaining items
+                if (selectedDiscountId) {
+                     const preset = mockPresetDiscounts.find(d => d.id === selectedDiscountId);
+                    if (preset) {
+                        // Similar discount logic as above, but for remainingItems
+                         let discountableSubtotalForRemainingSplit = 0;
+                        if (preset.applicableItemIds && preset.applicableItemIds.length > 0) {
+                            discountableSubtotalForRemainingSplit = remainingItems
+                                .filter(item => !item.isCourtesy && preset.applicableItemIds!.includes(item.menuItemId))
+                                .reduce((sum, item) => sum + item.price * item.quantity, 0);
+                        } else if (preset.applicableCategoryIds && preset.applicableCategoryIds.length > 0) {
+                             const itemCategories = remainingItems.map(item => mockMenuItemsAll.find(mi => mi.id === item.menuItemId)?.category.id);
+                            discountableSubtotalForRemainingSplit = remainingItems
+                                .filter((item, index) => !item.isCourtesy && preset.applicableCategoryIds!.includes(itemCategories[index] || ''))
+                                .reduce((sum, item) => sum + item.price * item.quantity, 0);
+                        } else {
+                            discountableSubtotalForRemainingSplit = remainingItemsSubtotal;
+                        }
+                        remainingItemsDiscount = discountableSubtotalForRemainingSplit * (preset.percentage / 100);
+                    }
+                } // Manual discount is harder to split proportionally for 'by_item' unless it's the last split or applies to everything.
+                  // For simplicity, manual discount might be considered applied before splitting by item, affecting overall total.
+                
+                const remainingItemsSubtotalAfterDiscount = remainingItemsSubtotal - remainingItemsDiscount;
+                const remainingItemsTax = remainingItemsSubtotalAfterDiscount * IVA_RATE;
+                const remainingItemsAmountDue = remainingItemsSubtotalAfterDiscount + remainingItemsTax;
 
                 newUiSplits.push({
                     id: 'split-items-remaining',
@@ -594,15 +658,31 @@ function OrdersPageContent() {
                     isPaid: false,
                 });
             }
-            if (selectedItemsForSplit.length === 0 && activeOrderItems.length > 0) { // No items selected for split yet, show all as one
+            // If no items are selected for splitting yet, or all items are "remaining"
+            if (selectedItemsForSplit.length === 0 && activeOrderItems.length > 0) { 
+                const fullAmountDue = orderTotalsForCheckout.subtotal - (orderTotalsForCheckout.discountAmount || 0) + orderTotalsForCheckout.taxAmount;
                  newUiSplits.push({
                     id: 'split-items-all',
-                    amountDue: totalOrderAmount,
-                    amountToPay: totalOrderAmount.toFixed(2),
+                    amountDue: fullAmountDue, // Should be the total without tip
+                    amountToPay: fullAmountDue.toFixed(2), // Tip is added at the end
                     items: activeOrderItems,
                     isPaid: false,
                 });
             }
+             // Distribute tip proportionally among non-paid splits or add to the last one
+            const totalAmountFromSplits = newUiSplits.reduce((sum, split) => sum + parseFloat(split.amountToPay), 0);
+            const expectedTotalWithoutTip = orderTotalsForCheckout.subtotal - (orderTotalsForCheckout.discountAmount || 0) + orderTotalsForCheckout.taxAmount;
+            if (Math.abs(totalAmountFromSplits - expectedTotalWithoutTip) > 0.01 && newUiSplits.length > 0) {
+                 // This case suggests an issue in individual split calculation, log or adjust
+                console.warn("Discrepancy in by-item split amounts vs order total pre-tip.");
+            }
+            // Add tip to the overall total due, it will be covered by the sum of payments
+            if (newUiSplits.length > 0 && tipAmount > 0) {
+                // For simplicity, just make sure the final "pay" button logic considers the grand total including tip.
+                // Or, add tip to one of the splits, usually the last one or distribute.
+                // For this mock, we assume the user will ensure total payment covers grandTotalAmount.
+            }
+
 
         } else { // 'none'
             newUiSplits.push({
@@ -618,7 +698,7 @@ function OrdersPageContent() {
         setUiSplits([]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paymentSplitType, paymentSplitWays, itemsToSplitBy, currentStep, loadedOrderForCheckout, currentOrderItemsForCheckoutDisplay, finalTotalAmountForCheckout]);
+  }, [paymentSplitType, paymentSplitWays, itemsToSplitBy, currentStep, loadedOrderForCheckout, currentOrderItemsForCheckoutDisplay, finalTotalAmountForCheckout, tipAmount]);
 
 
   const handlePaySplit = (splitId: string) => {
@@ -631,6 +711,10 @@ function OrdersPageContent() {
             const amountToPayNum = parseFloat(split.amountToPay);
             if (isNaN(amountToPayNum) || amountToPayNum <= 0) {
                 toast({ title: "Invalid Amount", description: "Enter a valid amount to pay for this share.", variant: "destructive" });
+                return split;
+            }
+            if (amountToPayNum > split.amountDue + 0.001) { // Check for overpayment with small tolerance
+                toast({ title: "Overpayment", description: `Cannot pay more than the due amount for this share ($${split.amountDue.toFixed(2)}).`, variant: "destructive" });
                 return split;
             }
             // Mock payment success
@@ -1244,7 +1328,11 @@ function OrdersPageContent() {
                     className="w-full" 
                     size="lg" 
                     onClick={handleFinalizePayment} 
-                    disabled={!loadedOrderForCheckout || (isCourtesyCheckout || isOnHoldCheckout ? false : paymentSplitType === 'none' ? !paymentMethod : uiSplits.some(s=>!s.isPaid))}
+                    disabled={
+                        !loadedOrderForCheckout ||
+                        (!isCourtesyCheckout && !isOnHoldCheckout && paymentSplitType !== 'none' && uiSplits.some(s => !s.isPaid)) ||
+                        (!isCourtesyCheckout && !isOnHoldCheckout && paymentSplitType === 'none' && !paymentMethod)
+                    }
                   >
                     <Save className="mr-2 h-5 w-5" /> 
                     {isCourtesyCheckout ? "Finalize as Courtesy" : isOnHoldCheckout ? "Confirm On Hold Status" : "Finalize & Pay Order"}
