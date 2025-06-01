@@ -36,7 +36,7 @@ export default function DashboardPage() {
             className={cn(
               "shadow-lg rounded-lg overflow-hidden transition-all hover:shadow-xl",
               {
-                'border-green-500 bg-green-500/20': table.status === 'available',
+                'border-green-500 bg-card': table.status === 'available', // Changed background to bg-card
                 'border-blue-500 bg-blue-500/20': table.status === 'occupied',
                 'border-yellow-500 bg-yellow-500/20': table.status === 'reserved',
                 'border-border': !['available', 'occupied', 'reserved'].includes(table.status) // Fallback
