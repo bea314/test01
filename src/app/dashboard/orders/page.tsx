@@ -55,7 +55,7 @@ function OrdersPageContent() {
 
   const [currentStep, setCurrentStep] = useState<OrderStep>('building');
   // For new orders or adding to active order
-  const [newOrderItems, setNewOrderItems] = useState<Omit<OrderItem, 'id' | 'status' | 'menuItemId'> & { menuItemId: string; price: number; name: string; observations?: string; assignedGuest?: string; quantity: number }>[]([]);
+  const [newOrderItems, setNewOrderItems] = useState<(Omit<OrderItem, 'id' | 'status' | 'menuItemId'> & { tempId: string; menuItemId: string; price: number; name: string; observations?: string; assignedGuest?: string; quantity: number })[]>([]);
   // For displaying existing items when adding to active order, or items during checkout
   const [existingOrderItems, setExistingOrderItems] = useState<OrderItem[]>([]);
 
@@ -118,9 +118,25 @@ function OrdersPageContent() {
             setIsOnHoldCheckout(orderToCheckout.isOnHold || false);
             setDisableReceiptPrintCheckout(orderToCheckout.disableReceiptPrint || false);
             setTipAmount(orderToCheckout.tipAmount || 0); // Use existing tip amount or calculate default
+            setTipMode('default'); // Reset tip mode each time an order is loaded for checkout
+            if (orderToCheckout.tipAmount > 0) { // Attempt to infer tip mode if a tip was already set
+                const defaultTip = (orderToCheckout.subtotal - (orderToCheckout.discountAmount || 0)) * (DEFAULT_TIP_PERCENTAGE / 100);
+                if (Math.abs(orderToCheckout.tipAmount - defaultTip) < 0.01) { // Check if it matches default
+                    setTipMode('default');
+                } else {
+                    // Cannot reliably distinguish between percentage and manual if it's not default
+                    // So, if a tip exists and it's not default, assume manual for simplicity or set to percentage and try to derive
+                    // For now, let's default to 'manual' if a non-default tip exists to show the value.
+                    setTipMode('manual');
+                    setManualTipAmount(orderToCheckout.tipAmount);
+                }
+            }
+
+
             setCurrentStep('checkout');
         } else {
             toast({ title: "Error", description: `Order ${checkoutOrderIdParam} not found for checkout.`, variant: "destructive" });
+            router.push('/dashboard/active-orders');
         }
     } else if (pageMode === 'add_to_active' && editActiveOrderIdParam) {
         const orderToEdit = mockActiveOrders.find(o => o.id === editActiveOrderIdParam);
@@ -133,20 +149,22 @@ function OrdersPageContent() {
             setCurrentStep('building');
         } else {
             toast({ title: "Error", description: `Order ${editActiveOrderIdParam} not found for editing.`, variant: "destructive" });
+            router.push('/dashboard/active-orders');
         }
     } else { // New order mode
+        setLoadedOrderForCheckout(null); // Ensure no previous checkout order is lingering
         if (typeParam) {
           setOrderType(typeParam);
           if (typeParam !== 'Dine-in') {
             setNumberOfGuests(undefined);
             setSelectedTableId(undefined); 
           } else {
-            setNumberOfGuests(numberOfGuests === undefined ? 1 : numberOfGuests);
+            setNumberOfGuests(numberOfGuests === undefined || numberOfGuests === 0 ? 1 : numberOfGuests);
             if (tableIdParam) setSelectedTableId(tableIdParam);
           }
         } else { // Default to Dine-in if no params
             setOrderType('Dine-in');
-            setNumberOfGuests(numberOfGuests === undefined ? 1 : numberOfGuests);
+            setNumberOfGuests(numberOfGuests === undefined || numberOfGuests === 0 ? 1 : numberOfGuests);
             if (tableIdParam) setSelectedTableId(tableIdParam);
         }
         setCurrentStep('building');
@@ -159,9 +177,18 @@ function OrdersPageContent() {
     setExistingOrderItems([]);
     setSearchTerm('');
     setSelectedCategory('all');
-    setOrderType('Dine-in');
-    setSelectedTableId(undefined);
-    setNumberOfGuests(1);
+    
+    const currentOrderType = searchParams.get('type') as OrderType | null;
+    const currentTableId = searchParams.get('tableId') as string | null;
+
+    setOrderType(currentOrderType || 'Dine-in');
+    if (currentOrderType === 'Dine-in') {
+        setSelectedTableId(currentTableId || undefined);
+        setNumberOfGuests(1);
+    } else {
+        setSelectedTableId(undefined);
+        setNumberOfGuests(undefined);
+    }
     setSelectedWaiter(initialStaff[0]?.id);
     
     // Checkout states
@@ -169,6 +196,7 @@ function OrdersPageContent() {
     setTipMode('default');
     setCustomTipPercentage(DEFAULT_TIP_PERCENTAGE);
     setManualTipAmount(0);
+    setTipAmount(0);
     setSelectedDiscountId(undefined);
     setPaymentMethod(undefined);
     setDteType('consumidor_final');
@@ -183,7 +211,10 @@ function OrdersPageContent() {
     setDisableReceiptPrintCheckout(false);
 
     setCurrentStep('building');
-    router.replace('/dashboard/orders'); // Clear query params
+     // Only clear query params if we are not in a checkout/edit flow that requires them
+    if (!checkoutOrderIdParam && !editActiveOrderIdParam && !currentOrderType && !currentTableId) {
+      router.replace('/dashboard/orders');
+    }
   };
 
   const updateItemGuestAssignment = (tempId: string, guest: string) => {
@@ -199,10 +230,10 @@ function OrdersPageContent() {
       const existingItemIndex = prevItems.findIndex(item => 
         item.menuItemId === menuItem.id && 
         !item.observations && 
-        (!numberOfGuests || numberOfGuests <= 1 || !item.assignedGuest) // Only merge if not guest-assigned or single guest
+        (!numberOfGuests || numberOfGuests <= 1 || !item.assignedGuest || item.assignedGuest === 'Guest 1') // Adjust merging logic
       );
 
-      if (existingItemIndex > -1 && (!numberOfGuests || numberOfGuests <=1 || pageMode === 'add_to_active')) {
+      if (existingItemIndex > -1 && (!numberOfGuests || numberOfGuests <=1 || !pageMode.startsWith('add_to_active'))) {
         return prevItems.map((item, index) =>
           index === existingItemIndex ? { ...item, quantity: item.quantity + 1 } : item
         );
@@ -243,23 +274,23 @@ function OrdersPageContent() {
     }
   };
   
-  const currentOrderItemsForDisplay = pageMode === 'checkout_existing' ? existingOrderItems : newOrderItems;
+  const currentOrderItemsForDisplay = pageMode === 'checkout_existing' && loadedOrderForCheckout ? loadedOrderForCheckout.items.filter(i => i.status !== 'cancelled') : newOrderItems;
   
   const subtotal = useMemo(() => {
-    if (pageMode === 'checkout_existing' && loadedOrderForCheckout) {
-      return loadedOrderForCheckout.items.filter(i => i.status !== 'cancelled').reduce((sum, item) => sum + item.price * item.quantity, 0);
-    }
-    return newOrderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const itemsToConsider = pageMode === 'checkout_existing' && loadedOrderForCheckout
+      ? loadedOrderForCheckout.items.filter(i => i.status !== 'cancelled')
+      : newOrderItems;
+    return itemsToConsider.reduce((sum, item) => sum + item.price * item.quantity, 0);
   }, [newOrderItems, loadedOrderForCheckout, pageMode]);
   
   const discountPercentage = useMemo(() => {
-    if (isCourtesyCheckout && pageMode === 'checkout_existing') return 100;
+    if (isCourtesyCheckout) return 100; // isCourtesyCheckout applies at checkout step
     const preset = mockPresetDiscounts.find(d => d.id === selectedDiscountId);
     return preset ? preset.percentage : 0;
-  }, [selectedDiscountId, isCourtesyCheckout, pageMode]);
+  }, [selectedDiscountId, isCourtesyCheckout]);
   
   const discountAmount = useMemo(() => {
-    if (isCourtesyCheckout && pageMode === 'checkout_existing') return subtotal;
+    if (isCourtesyCheckout) return subtotal; // Full discount for courtesy
 
     let discountableSubtotal = subtotal;
     const preset = mockPresetDiscounts.find(d => d.id === selectedDiscountId);
@@ -281,6 +312,7 @@ function OrdersPageContent() {
                 })
                 .reduce((sum, item) => sum + item.price * item.quantity, 0);
         }
+        // If no specific applicability, it applies to the whole subtotal
     } else {
       return 0; // No discount selected
     }
@@ -292,7 +324,8 @@ function OrdersPageContent() {
   const [tipAmount, setTipAmount] = useState(0);
 
   useEffect(() => {
-    if (pageMode === 'checkout_existing') {
+    // This effect now only runs for checkout step, based on loadedOrderForCheckout
+    if (pageMode === 'checkout_existing' && loadedOrderForCheckout) {
       if (isCourtesyCheckout) {
         setTipAmount(0);
         return;
@@ -303,7 +336,7 @@ function OrdersPageContent() {
           calculatedTip = subtotalAfterDiscount * (customTipPercentage / 100);
           break;
         case 'manual':
-          calculatedTip = manualTipAmount;
+          calculatedTip = manualTipAmount < 0 ? 0 : manualTipAmount; // Ensure manual tip isn't negative
           break;
         case 'default':
         default:
@@ -311,16 +344,19 @@ function OrdersPageContent() {
           break;
       }
       setTipAmount(calculatedTip);
+    } else {
+      // For building new order, tip is 0
+      setTipAmount(0);
     }
-  }, [tipMode, subtotalAfterDiscount, customTipPercentage, manualTipAmount, isCourtesyCheckout, pageMode]);
+  }, [tipMode, subtotalAfterDiscount, customTipPercentage, manualTipAmount, isCourtesyCheckout, pageMode, loadedOrderForCheckout]);
 
 
-  const taxAmount = useMemo(() => (isCourtesyCheckout && pageMode === 'checkout_existing') ? 0 : subtotalAfterDiscount * IVA_RATE, [subtotalAfterDiscount, isCourtesyCheckout, pageMode]);
+  const taxAmount = useMemo(() => (isCourtesyCheckout) ? 0 : subtotalAfterDiscount * IVA_RATE, [subtotalAfterDiscount, isCourtesyCheckout]);
   
   const totalAmount = useMemo(() => {
-    if (isCourtesyCheckout && pageMode === 'checkout_existing') return 0;
+    if (isCourtesyCheckout) return 0;
     return subtotalAfterDiscount + taxAmount + tipAmount;
-  }, [subtotalAfterDiscount, taxAmount, tipAmount, isCourtesyCheckout, pageMode]);
+  }, [subtotalAfterDiscount, taxAmount, tipAmount, isCourtesyCheckout]);
 
 
   const filteredMenuItems = mockMenuItemsAll.filter(item =>
@@ -349,12 +385,10 @@ function OrdersPageContent() {
         waiterId: selectedWaiter,
         tableId: orderType === 'Dine-in' ? selectedTableId : undefined,
         numberOfGuests: orderType === 'Dine-in' ? numberOfGuests : undefined,
-        // Financials will be calculated by addActiveOrder
-        // Initial flags (can be overridden later on active order details)
         isCourtesy: false, 
         isOnHold: false,
         disableReceiptPrint: false,
-        tipAmount: 0, // Tip is handled at checkout
+        tipAmount: 0, 
     };
 
     const newCreatedOrder = addActiveOrder(orderPayload);
@@ -388,7 +422,7 @@ function OrdersPageContent() {
         return;
     }
     const itemsToAdd: OrderItem[] = newOrderItems.map((item, index) => ({
-        id: `oi-${activeOrder.id}-new-${Date.now()}-${index}`, // Ensure unique ID
+        id: `oi-${activeOrder.id}-new-${Date.now()}-${index}`, 
         menuItemId: item.menuItemId,
         name: item.name,
         quantity: item.quantity,
@@ -396,7 +430,7 @@ function OrdersPageContent() {
         observations: item.observations,
         assignedGuest: item.assignedGuest,
         status: 'pending',
-        modifiers: [] // Assuming no modifiers for newly added items for simplicity
+        modifiers: [] 
     }));
 
     const updatedOrderItems = [...activeOrder.items, ...itemsToAdd];
@@ -417,7 +451,7 @@ function OrdersPageContent() {
         toast({ title: "Error", description: "No active order selected for payment.", variant: "destructive" });
         return;
     }
-    if (!paymentMethod && !isCourtesyCheckout) {
+    if (!paymentMethod && !isCourtesyCheckout && !isOnHoldCheckout) {
         toast({ title: "Payment Method Required", description: "Please select a payment method.", variant: "destructive" });
         return;
     }
@@ -428,10 +462,16 @@ function OrdersPageContent() {
     
     const orderToUpdate = loadedOrderForCheckout;
 
+    const finalStatus = isCourtesyCheckout 
+        ? 'completed' 
+        : isOnHoldCheckout 
+            ? 'on_hold' 
+            : 'paid';
+
     const updatedOrderPartial: Partial<Order> & { id: string } = {
         id: orderToUpdate.id,
-        status: isCourtesyCheckout ? 'completed' : isOnHoldCheckout ? 'on_hold' : 'paid',
-        paymentMethod: isCourtesyCheckout ? undefined : paymentMethod,
+        status: finalStatus,
+        paymentMethod: isCourtesyCheckout || isOnHoldCheckout ? orderToUpdate.paymentMethod : paymentMethod, // Keep existing if courtesy/onhold, else update
         dteType,
         dteInvoiceInfo: dteType === 'credito_fiscal' ? { nit: dteNit, nrc: dteNrc, customerName: dteCustomerName } : undefined,
         tipAmount, 
@@ -453,8 +493,9 @@ function OrdersPageContent() {
         message += ` Payment split: ${paymentSplitType}`;
         if (paymentSplitType === 'equal') message += ` into ${paymentSplitWays} ways.`;
     }
-    if (isCourtesyCheckout) message = `Order #${finalUpdatedOrder.id.slice(-6)} Marked as Courtesy.`;
-    else if (isOnHoldCheckout) message = `Order #${finalUpdatedOrder.id.slice(-6)} status set to On Hold.`;
+    if (isCourtesyCheckout) message = `Order #${finalUpdatedOrder.id.slice(-6)} Marked as Courtesy. Status: Completed.`;
+    else if (isOnHoldCheckout) message = `Order #${finalUpdatedOrder.id.slice(-6)} status confirmed as On Hold.`;
+    else message = `Order #${finalUpdatedOrder.id.slice(-6)} paid. Status: Paid.`
 
 
     toast({ title: "Payment Processed", description: message });
@@ -495,6 +536,15 @@ function OrdersPageContent() {
     }
   };
 
+  // Effect to set courtesy/onhold/disablePrint flags from loadedOrderForCheckout
+  useEffect(() => {
+    if (pageMode === 'checkout_existing' && loadedOrderForCheckout) {
+        setIsCourtesyCheckout(loadedOrderForCheckout.isCourtesy || false);
+        setIsOnHoldCheckout(loadedOrderForCheckout.isOnHold || false);
+        setDisableReceiptPrintCheckout(loadedOrderForCheckout.disableReceiptPrint || false);
+    }
+  }, [loadedOrderForCheckout, pageMode]);
+
 
   return (
     <div className="container mx-auto py-8">
@@ -510,10 +560,14 @@ function OrdersPageContent() {
                 {checkoutOrderIdParam ? "Back to Active Order" : "Cancel Checkout & Start New"}
             </Button>
         )}
-         {pageMode === 'add_to_active' && (
-             <Button variant="outline" onClick={() => router.push(`/dashboard/active-orders/${editActiveOrderIdParam}`)}>
+         {(pageMode === 'add_to_active' || pageMode === 'new_order' && currentStep === 'building') && (
+             <Button variant="outline" onClick={() => {
+                if(editActiveOrderIdParam) router.push(`/dashboard/active-orders/${editActiveOrderIdParam}`);
+                else if(searchParams.get('tableId')) router.push(`/dashboard?tableId=${searchParams.get('tableId')}`); // Go back to table view if came from there
+                else router.push('/dashboard/home'); // Default back
+             }}>
                 <ArrowLeft className="mr-2 h-4 w-4" /> 
-                Back to Order Details
+                {editActiveOrderIdParam ? "Back to Order Details" : "Cancel Order"}
             </Button>
          )}
       </div>
@@ -526,16 +580,20 @@ function OrdersPageContent() {
               {pageMode !== 'add_to_active' && (
                 <>
                   <div className="grid grid-cols-2 gap-2 mt-2">
-                      <Select value={orderType} onValueChange={(value) => {
+                      <Select 
+                        value={orderType} 
+                        onValueChange={(value) => {
                           const newOrderType = value as OrderType;
                           setOrderType(newOrderType);
                           if (newOrderType !== 'Dine-in') {
                             setNumberOfGuests(undefined);
                             setSelectedTableId(undefined);
-                          } else if (numberOfGuests === undefined) {
+                          } else if (numberOfGuests === undefined || numberOfGuests === 0) {
                             setNumberOfGuests(1);
                           }
-                      }}>
+                      }}
+                      disabled={pageMode === 'add_to_active'}
+                      >
                           <SelectTrigger aria-label="Order Type">
                               <SelectValue placeholder="Order Type" />
                           </SelectTrigger>
@@ -545,7 +603,7 @@ function OrdersPageContent() {
                               <SelectItem value="Delivery">Delivery</SelectItem>
                           </SelectContent>
                       </Select>
-                      <Select value={selectedWaiter} onValueChange={setSelectedWaiter}>
+                      <Select value={selectedWaiter} onValueChange={setSelectedWaiter} disabled={pageMode === 'add_to_active'}>
                           <SelectTrigger aria-label="Assign Waiter">
                               <SelectValue placeholder="Assign Waiter" />
                           </SelectTrigger>
@@ -558,7 +616,7 @@ function OrdersPageContent() {
                     <div className="grid grid-cols-2 gap-2 mt-2">
                       <div>
                         <Label htmlFor="selectedTable">Table</Label>
-                        <Select value={selectedTableId} onValueChange={setSelectedTableId}>
+                        <Select value={selectedTableId} onValueChange={setSelectedTableId} disabled={pageMode === 'add_to_active'}>
                             <SelectTrigger id="selectedTable" aria-label="Select Table">
                                 <SelectValue placeholder="Select Table" />
                             </SelectTrigger>
@@ -579,6 +637,7 @@ function OrdersPageContent() {
                             placeholder="e.g., 1"
                             min="1"
                             className="h-9"
+                            disabled={pageMode === 'add_to_active'}
                         />
                       </div>
                     </div>
@@ -687,7 +746,7 @@ function OrdersPageContent() {
               </CardContent>
             </ScrollArea>
             <CardFooter className="flex-col gap-2 mt-auto border-t pt-4">
-               <Button className="w-full" size="lg" onClick={handleMainButtonClick} disabled={isOnHoldCheckout && pageMode === 'new_order'}>
+               <Button className="w-full" size="lg" onClick={handleMainButtonClick} >
                   {mainButtonIcon} {mainButtonText}
                </Button>
             </CardFooter>
@@ -699,14 +758,6 @@ function OrdersPageContent() {
                   <div>
                       <CardTitle className="font-headline flex items-center"><Utensils className="mr-2 h-5 w-5"/>Menu Items</CardTitle>
                       <CardDescription>Select items to add. Search by name or item code.</CardDescription>
-                  </div>
-                  <div className="flex gap-2">
-                      <Button variant={menuView === 'grid' ? 'default' : 'outline'} size="icon" onClick={() => setMenuView('grid')} aria-label="Grid view">
-                          <LayoutGrid className="h-4 w-4"/>
-                      </Button>
-                      <Button variant={menuView === 'list' ? 'default' : 'outline'} size="icon" onClick={() => setMenuView('list')} aria-label="List view">
-                          <List className="h-4 w-4"/>
-                      </Button>
                   </div>
               </div>
               <div className="flex flex-col sm:flex-row gap-4 mt-4 items-center">
@@ -728,6 +779,14 @@ function OrdersPageContent() {
                     ))}
                   </SelectContent>
                 </Select>
+                 <div className="flex gap-2 ml-auto">
+                    <Button variant={menuView === 'grid' ? 'default' : 'outline'} size="icon" onClick={() => setMenuView('grid')} aria-label="Grid view">
+                        <LayoutGrid className="h-4 w-4"/>
+                    </Button>
+                    <Button variant={menuView === 'list' ? 'default' : 'outline'} size="icon" onClick={() => setMenuView('list')} aria-label="List view">
+                        <List className="h-4 w-4"/>
+                    </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -831,8 +890,8 @@ function OrdersPageContent() {
                 <div>
                     <h4 className="font-semibold mb-2">Order Summary</h4>
                     <ScrollArea className="h-[200px] border rounded-md p-3">
-                        {existingOrderItems.filter(i => i.status !== 'cancelled').map(item => (
-                            <div key={item.id} className="flex justify-between items-start py-1.5 border-b last:border-b-0">
+                        {currentOrderItemsForDisplay.map(item => (
+                            <div key={item.id || (item as any).tempId} className="flex justify-between items-start py-1.5 border-b last:border-b-0">
                                 <div>
                                     <p className="font-medium">{item.quantity}x {item.name} {item.assignedGuest && <span className="text-xs text-muted-foreground">({item.assignedGuest})</span>}</p>
                                     <p className="text-xs text-muted-foreground">${(item.price * item.quantity).toFixed(2)}</p>
@@ -840,18 +899,18 @@ function OrdersPageContent() {
                                 </div>
                                  {paymentSplitType === 'by_item' && (
                                     <Checkbox
-                                      checked={!!itemsToSplit[item.id]}
-                                      onCheckedChange={(checked) => setItemsToSplit(prev => ({...prev, [item.id]: !!checked}))}
+                                      checked={!!itemsToSplit[item.id || (item as any).tempId]}
+                                      onCheckedChange={(checked) => setItemsToSplit(prev => ({...prev, [item.id || (item as any).tempId]: !!checked}))}
                                       aria-label={`Select ${item.name} for separate payment`}
-                                      disabled={isCourtesyCheckout}
+                                      disabled={isCourtesyCheckout || isOnHoldCheckout}
                                     />
                                   )}
                             </div>
                         ))}
-                         {existingOrderItems.filter(i => i.status === 'cancelled').length > 0 && (
+                         {loadedOrderForCheckout.items.filter(i => i.status === 'cancelled').length > 0 && (
                             <div className="mt-2 pt-2 border-t">
                                 <p className="text-xs text-muted-foreground font-semibold mb-1">Cancelled Items:</p>
-                                {existingOrderItems.filter(i => i.status === 'cancelled').map(item => (
+                                {loadedOrderForCheckout.items.filter(i => i.status === 'cancelled').map(item => (
                                     <p key={item.id} className="text-xs text-destructive line-through">{item.quantity}x {item.name}</p>
                                 ))}
                             </div>
@@ -864,7 +923,7 @@ function OrdersPageContent() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-3">
                         <Label className="font-headline">Tip Options</Label>
-                        <RadioGroup value={tipMode} onValueChange={(value) => setTipMode(value as TipMode)} disabled={isCourtesyCheckout}>
+                        <RadioGroup value={tipMode} onValueChange={(value) => setTipMode(value as TipMode)} disabled={isCourtesyCheckout || isOnHoldCheckout}>
                             <div className="flex items-center space-x-2">
                                 <RadioGroupItem value="default" id="tipDefault" />
                                 <Label htmlFor="tipDefault">Default ({DEFAULT_TIP_PERCENTAGE}%)</Label>
@@ -883,7 +942,7 @@ function OrdersPageContent() {
                     </div>
                     <div className="space-y-3">
                          <Label className="font-headline">Discount Options</Label>
-                         <Select value={selectedDiscountId} onValueChange={(value) => {setSelectedDiscountId(value === 'none' ? undefined : value);}} disabled={isCourtesyCheckout} >
+                         <Select value={selectedDiscountId} onValueChange={(value) => {setSelectedDiscountId(value === 'none' ? undefined : value);}} disabled={isCourtesyCheckout || isOnHoldCheckout} >
                             <SelectTrigger aria-label="Select Discount">
                                 <SelectValue placeholder="No Discount" />
                             </SelectTrigger>
@@ -904,14 +963,14 @@ function OrdersPageContent() {
                     <div className="flex justify-between"><span>Subtotal after Discount:</span> <span>${subtotalAfterDiscount.toFixed(2)}</span></div>
                     <div className="flex justify-between"><span>Tip:</span> <span>${tipAmount.toFixed(2)}</span></div>
                     <div className="flex justify-between"><span>Tax ({(IVA_RATE * 100).toFixed(0)}%):</span> <span>${taxAmount.toFixed(2)}</span></div>
-                    <div className="flex justify-between font-bold text-lg text-primary mt-2"><span>Grand Total:</span> <span>${totalAmount.toFixed(2)}</span></div>
+                    <div className="flex justify-between font-bold text-lg text-primary mt-2"><span>Grand Total:</span> <h1>${totalAmount.toFixed(2)}</h1></div>
                 </div>
 
                 <Separator />
                 
                 <div className="space-y-4">
                     <Label className="font-headline">Payment Splitting (Mock)</Label>
-                    <Select value={paymentSplitType} onValueChange={(value) => setPaymentSplitType(value as PaymentSplitType)} disabled={isCourtesyCheckout}>
+                    <Select value={paymentSplitType} onValueChange={(value) => setPaymentSplitType(value as PaymentSplitType)} disabled={isCourtesyCheckout || isOnHoldCheckout}>
                         <SelectTrigger aria-label="Payment Split Type">
                             <SelectValue placeholder="No Split" />
                         </SelectTrigger>
@@ -973,7 +1032,7 @@ function OrdersPageContent() {
 
                  <Separator />
                 <div className="space-y-3">
-                    <Label className="font-headline">Order Actions (Reflected from Active Order)</Label>
+                    <Label className="font-headline">Order Actions (Status from Active Order)</Label>
                     <div className="flex flex-wrap gap-4 items-center">
                         <div className="flex items-center space-x-2">
                             <Checkbox id="isCourtesyCheckout" checked={isCourtesyCheckout} disabled={true} />
@@ -991,7 +1050,7 @@ function OrdersPageContent() {
                 </div>
             </CardContent>
             <CardFooter className="border-t pt-4">
-                 <Button className="w-full" size="lg" onClick={handleFinalizePayment}>
+                 <Button className="w-full" size="lg" onClick={handleFinalizePayment} disabled={!loadedOrderForCheckout || (isCourtesyCheckout ? false : isOnHoldCheckout ? false : !paymentMethod)}>
                     <Save className="mr-2 h-5 w-5" /> 
                     {isCourtesyCheckout ? "Finalize as Courtesy" : isOnHoldCheckout ? "Confirm On Hold Status" : "Finalize & Pay"}
                  </Button>
