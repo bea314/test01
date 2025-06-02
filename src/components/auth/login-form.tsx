@@ -23,7 +23,7 @@ export function LoginForm() {
     await new Promise(resolve => setTimeout(resolve, 1000)); 
     setIsLoading(false);
     // On successful login:
-    router.push('/dashboard'); // Navigate to dashboard
+    router.push('/dashboard/home'); // Navigate to dashboard home
   };
 
   return (
