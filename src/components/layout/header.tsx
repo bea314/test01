@@ -1,6 +1,7 @@
 
 "use client";
 import Link from 'next/link';
+import { useRouter } from 'next/navigation'; // Import useRouter
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +18,7 @@ import { SidebarTrigger } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
 
 export function DashboardHeader() {
+  const router = useRouter(); // Initialize router
   // Placeholder user data
   const user = { name: "Admin User", email: "admin@krealiares.com", initials: "AU" };
 
@@ -63,9 +65,8 @@ export function DashboardHeader() {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => {
-                // Handle logout, e.g., redirect to /auth/login
-                console.log("Logout clicked");
-                // router.push('/auth/login'); // If using useRouter
+                console.log("Logout clicked, redirecting to login...");
+                router.push('/auth/login'); // Redirect to login page
               }}
               className="text-destructive focus:bg-destructive/10 focus:text-destructive"
             >
